@@ -31,6 +31,7 @@ module VCAP
           UNKNOWN_PLAN_UNIQUE_ID = [30002, HTTP_BAD_REQUEST, 'Unknown unique_id']
           UNKNOWN_PLAN = [30003, HTTP_BAD_REQUEST, 'Unknown plan %s']
           UNSUPPORTED_VERSION = [30004, HTTP_BAD_REQUEST, 'Unsupported version %s']
+          UNSUPPORTED_BINDING_OPTIONS = [30005, HTTP_BAD_REQUEST, 'Unsupported binding options %s']
 
           # 30100 - 30199  401 Unauthorized
           NOT_AUTHORIZED = [30100, HTTP_NOT_AUTHORIZED, 'Not authorized']
