@@ -24,7 +24,6 @@ Gem::Specification.new do |s|
   s.add_dependency "sinatra", ">= 1.2.3"
   s.add_dependency "thin", ">=1.3.1"
   s.add_dependency "vcap_common", ">= 2.2.1"
-  s.add_dependency "vcap_logging", ">= 1.0.2"
   s.add_dependency "vcap_services_messages"
   s.add_dependency "resque", "~> 1.20"
   s.add_dependency "resque-status"
@@ -34,4 +33,5 @@ Gem::Specification.new do |s|
   s.add_dependency "warden-protocol"
   s.add_dependency "cf-uaa-lib"
   s.add_dependency "fog"
+  s.add_dependency "steno"
 end

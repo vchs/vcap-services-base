@@ -1,6 +1,6 @@
 require "resque-status"
 require "fileutils"
-require "vcap/logging"
+require "steno"
 require "fog"
 
 require_relative "../service_error"
