@@ -29,7 +29,12 @@ module VCAP::Services
       @provider = attrs.fetch('provider')
       @version = attrs.fetch('version')
       @url = attrs.fetch('url')
-      @plans = Plan.plan_hash_as_plan_array(attrs.fetch('plans'))
+
+      load_plans(attrs.fetch('plans'))
+    end
+
+    def load_plans(opts)
+      @plans = Plan.plan_hash_as_plan_array(opts)
     end
 
     def eql?(other)
