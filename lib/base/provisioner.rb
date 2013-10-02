@@ -52,7 +52,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       require 'provisioner_v1'
       extend VCAP::Services::Base::ProvisionerV1
       @prov_svcs = {}
-    elsif gw_version == "v2"
+    elsif gw_version == "v2" || gw_version == "scv1"
       require 'provisioner_v2'
       extend VCAP::Services::Base::ProvisionerV2
       @service_instances = {}
