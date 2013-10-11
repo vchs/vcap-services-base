@@ -38,7 +38,28 @@ module VCAP
         @gateway_stats = {}
         @gateway_stats_lock = Mutex.new
         snapshot_and_reset_stats
-        @http_handler = HTTPHandler.new(opts)
+        @http_handler = HTTPHandler.new(
+            opts,
+            lambda {
+              # Load the auth token to be sent out in Authorization header when making CCNG-v2 requests
+              credentials = @opts.fetch(:uaa_client_auth_credentials)
+              client_id = @opts.fetch(:uaa_client_id)
+
+              if ENV["AUTHORIZATION_TOKEN"]
+                uaa_client_auth_token = ENV["AUTHORIZATION_TOKEN"]
+              else
+                ti = CF::UAA::TokenIssuer.new(@opts.fetch(:uaa_endpoint), client_id)
+                token = ti.implicit_grant_with_creds(credentials).info
+                uaa_client_auth_token = "#{token["token_type"]} #{token["access_token"]}"
+                expire_time = token["expires_in"].to_i
+                logger.info("Successfully refresh auth token for:\
+                            #{credentials[:username]}, token expires in \
+                            #{expire_time} seconds.")
+              end
+
+              uaa_client_auth_token
+            }
+        )
         @multiple_page_getter = CloudControllerServices.new(
           @http_handler.method(:cc_http_request),
           @http_handler.cc_req_hdrs,

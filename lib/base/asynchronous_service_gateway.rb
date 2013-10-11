@@ -45,6 +45,9 @@ module VCAP::Services
       elsif @cc_api_version == "v2"
         require 'catalog_manager_v2'
         @catalog_manager = VCAP::Services::CatalogManagerV2.new(opts)
+      elsif @cc_api_version == "scv1"
+        require 'services_controller_client/catalog_manager_sc_v1'
+        @catalog_manager = VCAP::Services::ServicesControllerClient::SCCatalogManagerV1.new(opts)
       else
         raise "Unknown cc_api_version: #{@cc_api_version}"
       end
