@@ -28,6 +28,50 @@ describe NodeTests do
     node.healthz_ok.should == "ok\n"
   end
 
+  it "should call varz & report healthz ok" do
+    node = nil
+    EM.run do
+      Do.at(0) { node = NodeTests.create_node }
+      Do.at(25) do
+        node.instances_health_invoked.should be_true
+        EM.stop
+      end
+    end
+  end
+
+  it "should check instances health" do
+    node = nil
+    mock_nats = nil
+    EM.run do
+      mock_nats = mock("test_mock_nats")
+      node = NodeTests.create_node
+      # assign mock nats to node
+      node.nats = mock_nats
+
+      mock_nats.should_not_receive(:publish)
+      node.send_instances_heartbeat
+
+      EM.stop
+    end
+  end
+
+  it "should send instances health if any" do
+    node = nil
+    mock_nats = nil
+    EM.run do
+      mock_nats = mock("test_mock_nats")
+      node = NodeTests.create_node(:ins_count => 1)
+      # assign mock nats to node
+      node.nats = mock_nats
+
+      mock_nats.should_receive(:publish)
+      node.send_instances_heartbeat
+
+      EM.stop
+    end
+  end
+
+
   it "should announce on request" do
     node = nil
     provisioner = nil

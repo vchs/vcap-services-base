@@ -12,6 +12,8 @@ require 'datamapper_l'
 class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   include VCAP::Services::Internal
 
+  DEFAULT_HEARTBEAT_INTERVAL = 10 # In secs
+
   def initialize(options)
     super(options)
     @node_id = options[:node_id]
@@ -36,6 +38,11 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     # Defer 5 seconds to give service a change to wake up
     EM.add_timer(5) do
       EM.defer { update_varz }
+    end if @node_nats
+
+    hb_interval = options[:instances_heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL
+    EM.add_periodic_timer(hb_interval) do
+      EM.defer { send_instances_heartbeat }
     end if @node_nats
   end
 
@@ -325,6 +332,22 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     end
   end
 
+  def send_instances_heartbeat
+    instances = instances_health_details.to_a
+    return if instances.empty?
+
+    hbs = { :node_type => service_name,
+            :node_id => @node_id,
+            :node_ip => get_host,
+            :instances => instances }
+    publish("svc.heartbeat", hbs)
+    nil
+  end
+
+  def instances_health_details
+    {}
+  end
+
   # Subclass must overwrite this method to enable check orphan instance feature.
   # Otherwise it will not check orphan instance
   # The return value should be a list of instance name(handle["service_id"]).
@@ -402,7 +425,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn("Exception at send_node_announcement #{e}")
   end
 
-  def node_ready?()
+  def node_ready?
     # Service Node subclasses can override this method if they depend
     # on some external service in order to operate; for example, MySQL
     # and Postgresql require a connection to the underlying server.

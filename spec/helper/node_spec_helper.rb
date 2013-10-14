@@ -35,6 +35,7 @@ class NodeTests
     attr_reader   :unbind_count
     attr_reader   :capacity
     attr_accessor :varz_invoked
+    attr_accessor :instances_health_invoked
     attr_reader   :healthz_ok
     SERVICE_NAME = "Test"
     SERVICE_VERSION = "1.0"
@@ -58,6 +59,7 @@ class NodeTests
       @unprovision_count = 0
       @unbind_count = 0
       @varz_invoked = false
+      @instances_health_invoked = false
       @ins_count = options[:ins_count] || 0
       @bind_count = options[:bind_count] || 0
       @plan = options[:plan] || "free"
@@ -124,6 +126,11 @@ class NodeTests
 
     def all_instances_list
       generate_ins_list(@ins_count)
+    end
+
+    def instances_health_details
+      @instances_health_invoked = true
+      @ins_count > 0 ? all_instances_list : {}
     end
 
     def all_bindings_list
