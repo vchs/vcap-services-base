@@ -12,6 +12,8 @@ require 'datamapper_l'
 class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   include VCAP::Services::Internal
 
+  DEFAULT_HEARTBEAT_INTERVAL = 10 # In secs
+
   def initialize(options)
     super(options)
     @node_id = options[:node_id]
@@ -58,6 +60,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) { send_node_announcement }
+
+    hb_interval = @options[:instances_heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL
+    EM.add_periodic_timer(hb_interval) { send_instances_heartbeat }
+
   end
 
   # raise an error if operation does not finish in time limit
@@ -92,6 +98,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       response.credentials = credential
       @capacity_lock.synchronize{ @capacity -= capacity_unit }
       @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
+      send_instances_heartbeat(credential[:name])
       response
     end
     publish(reply, encode_success(response))
@@ -164,6 +171,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     result = restore(instance_id, backup_path)
     if result
       publish(reply, encode_success(response))
+      send_instances_heartbeat(instance_id)
     else
       publish(reply, encode_failure(response))
     end
@@ -260,6 +268,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       handles << handle
     end
     publish(reply, Yajl::Encoder.encode(handles))
+    send_instances_heartbeat(result[:name])
   rescue => e
     @logger.warn("Exception at on_update_instance #{e}")
     response = SimpleResponse.new
@@ -323,6 +332,37 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
         @logger.debug("Error on purge orphan binding #{credential}: #{e}")
       end
     end
+  end
+
+  def get_instance_health(instance_name)
+  end
+
+  def send_instances_heartbeat(given_instance_list = [])
+    states = instances_health_details(given_instance_list).to_a
+    return if states.empty?
+
+    hbs = { :node_type => service_name,
+            :node_id => @node_id,
+            :node_ip => get_host,
+            :instances => states }
+    publish("svc.heartbeat", hbs)
+    nil
+  end
+
+  def instances_health_details(given_instance_list = [])
+    given_instance_list ||= []
+    given_instance_list = [given_instance_list] unless given_instance_list.is_a?(Array)
+    given_instance_list = given_instance_list.empty? ? all_instances_list : given_instance_list
+    # provisioned services status
+    states = {}
+    begin
+      given_instance_list.each do |name|
+        states[name.to_sym] = get_instance_health(name)
+      end
+    rescue => e
+      @logger.error("Error get instance list: #{e}")
+    end
+    states
   end
 
   # Subclass must overwrite this method to enable check orphan instance feature.
@@ -402,7 +442,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn("Exception at send_node_announcement #{e}")
   end
 
-  def node_ready?()
+  def node_ready?
     # Service Node subclasses can override this method if they depend
     # on some external service in order to operate; for example, MySQL
     # and Postgresql require a connection to the underlying server.

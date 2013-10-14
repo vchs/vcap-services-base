@@ -28,6 +28,50 @@ describe NodeTests do
     node.healthz_ok.should == "ok\n"
   end
 
+  it "should report instance health" do
+    node = nil
+    EM.run do
+      Do.at(0) { node = NodeTests.create_node(:ins_count => 1) }
+      Do.at(25) do
+        node.instance_health_invoked.should be_true
+        EM.stop
+      end
+    end
+  end
+
+  it "should not publish empty health list" do
+    node = nil
+    mock_nats = nil
+    EM.run do
+      mock_nats = mock("test_mock_nats")
+      node = NodeTests.create_node()
+      # assign mock nats to node
+      node.nats = mock_nats
+
+      mock_nats.should_not_receive(:publish).with(any_args())
+      node.send_instances_heartbeat
+
+      EM.stop
+    end
+  end
+
+  it "should publish instances' health if any" do
+    node = nil
+    mock_nats = nil
+    EM.run do
+      mock_nats = mock("test_mock_nats")
+      node = NodeTests.create_node(:ins_count => 1)
+      # assign mock nats to node
+      node.nats = mock_nats
+
+      mock_nats.should_receive(:publish).with(any_args())
+      node.send_instances_heartbeat
+
+      EM.stop
+    end
+  end
+
+
   it "should announce on request" do
     node = nil
     provisioner = nil
@@ -161,7 +205,7 @@ describe NodeTests do
       # assign mock nats to node
       node.nats = mock_nats
 
-      mock_nats.should_receive(:publish).with(any_args())
+      mock_nats.should_receive(:publish).twice.with(any_args())
 
       original_capacity = node.capacity
       req = VCAP::Services::Internal::ProvisionRequest.new
@@ -435,7 +479,7 @@ describe NodeTests do
       # assign mock nats to node
       node.nats = mock_nats
 
-      mock_nats.should_receive(:publish).with(any_args())
+      mock_nats.should_receive(:publish).twice.with(any_args())
 
       req = VCAP::Services::Internal::RestoreRequest.new
       req.instance_id = "fake1"
@@ -629,7 +673,7 @@ describe NodeTests do
       # assign mock nats to node
       node.nats = mock_nats
 
-      mock_nats.should_receive(:publish).with(any_args())
+      mock_nats.should_receive(:publish).twice.with(any_args())
 
       req = [{"service_id" => "fake1", "configuration" => {"plan" => "free"},\
               "credentials" => {"name" => "fake1"}}, []]
@@ -701,7 +745,7 @@ describe NodeTests do
       # assign mock nats to node
       node.nats = mock_nats
 
-      mock_nats.should_receive(:publish).with(any_args)
+      mock_nats.should_receive(:publish).twice.with(any_args)
 
       original_capacity = node.capacity
       req = [{"service_id" => "fake1", "configuration" => {"plan" => "free"},\
