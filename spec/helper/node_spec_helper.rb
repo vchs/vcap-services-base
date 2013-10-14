@@ -35,6 +35,7 @@ class NodeTests
     attr_reader   :unbind_count
     attr_reader   :capacity
     attr_accessor :varz_invoked
+    attr_accessor :instance_health_invoked
     attr_reader   :healthz_ok
     SERVICE_NAME = "Test"
     SERVICE_VERSION = "1.0"
@@ -58,6 +59,7 @@ class NodeTests
       @unprovision_count = 0
       @unbind_count = 0
       @varz_invoked = false
+      @instance_health_invoked = false
       @ins_count = options[:ins_count] || 0
       @bind_count = options[:bind_count] || 0
       @plan = options[:plan] || "free"
@@ -83,13 +85,19 @@ class NodeTests
     end
     def provision(plan, credential, version)
       sleep 4 # Provision takes 5 seconds to finish
-      @mutex.synchronize { @provision_times += 1 }
+      @mutex.synchronize do
+        @provision_times += 1
+        @ins_count += 1
+      end
       @provision_invoked = true
-      Hash.new
+      {:name => "new_instance#{@ins_count}"}
     end
     def unprovision(name, bindings)
       @unprovision_invoked = true
-      @mutex.synchronize{ @unprovision_count += 1 }
+      @mutex.synchronize do
+        @unprovision_count += 1
+        @ins_count -= 1
+      end
     end
     def bind(name, bind_opts, credential)
       @bind_invoked = true
@@ -124,6 +132,11 @@ class NodeTests
 
     def all_instances_list
       generate_ins_list(@ins_count)
+    end
+
+    def get_instance_health(name)
+      @instance_health_invoked = true
+      { health: 'ok' }
     end
 
     def all_bindings_list
