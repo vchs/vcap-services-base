@@ -201,7 +201,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   def on_connect_node
     @logger.debug("[#{service_description}] Connected to node mbus..")
-    %w[announce node_handles handles update_service_handle].each do |op|
+    %w[announce node_handles update_service_handle instances_info].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}") { |msg, reply| on_#{op}(msg, reply) }]
     end
 
