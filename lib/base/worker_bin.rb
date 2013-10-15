@@ -54,6 +54,7 @@ module VCAP::Services::Base
       logger = VCAP::Logging.logger(config["node_id"])
       redis_config = %w(host port password).inject({}){|res, o| res[o.to_sym] = config["resque"][o]; res}
       AsyncJob::Config.redis_config = redis_config
+      AsyncJob::Config.fog_config = config["fog"]
       AsyncJob::Config.logger = logger
 
       ENV['WORKER_CONFIG'] = Yajl::Encoder.encode(config)

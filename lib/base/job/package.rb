@@ -64,7 +64,15 @@ module VCAP::Services::Base::AsyncJob
         zf.get_output_stream(MANIFEST_FILE) {|o| o << Yajl::Encoder.encode(@manifest)}
 
         @files.each do |f, path|
-          zf.add("#{CONTENT_FOLDER}/#{f}", path)
+          if File.directory?(path)
+            base = File.dirname(path)
+            base << "/" unless base.end_with?("/")
+            Dir[File.join(path, '**', '**')].each do |file|
+              zf.add("#{CONTENT_FOLDER}/#{file.sub(base, '')}", file)
+            end
+          else
+            zf.add("#{CONTENT_FOLDER}/#{f}", path)
+          end
         end
       end
 
@@ -96,7 +104,7 @@ module VCAP::Services::Base::AsyncJob
       files
     rescue => e
       # auto cleanup if error raised.
-      files.each{|f| File.delete f if File.exists? f} if files
+      files.each{|f| FileUtils.rm_rf(f, :secure => true) if File.exists? f} if files
       raise ServiceError.new(ServiceError::FILE_CORRUPTED) if e.is_a? Zlib::DataError
       raise e
     end
@@ -105,7 +113,7 @@ module VCAP::Services::Base::AsyncJob
     def load_manifest
       zf = Zip::ZipFile.open(@zipfile)
       @manifest = VCAP.symbolize_keys(Yajl::Parser.parse(zf.read(MANIFEST_FILE)))
-    rescue Errno::ENOENT => e
+    rescue Errno::ENOENT
       raise ServiceError.new(ServiceError::BAD_SERIALIZED_DATAFILE, "request. Missing manifest.")
     end
   end
