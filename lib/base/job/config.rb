@@ -20,6 +20,10 @@ class VCAP::Services::Base::AsyncJob::Config
       Resque.redis = @redis
     end
 
+    def fog_config=(config)
+      VCAP.symbolize_keys config
+    end
+
     def logger=(logger)
       @logger = logger
     end
