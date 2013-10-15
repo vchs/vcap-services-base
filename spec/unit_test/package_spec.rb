@@ -10,6 +10,7 @@ describe VCAP::Services::Base::AsyncJob::Package do
     temp_file = Tempfile.new("all.zip")
     package = VCAP::Services::Base::AsyncJob::Package.new(temp_file.path)
     package.add_files([
+      assets_path("test_dir"),
       assets_path("test.sql"),
       assets_path("test.zip")
     ])
@@ -29,7 +30,7 @@ describe VCAP::Services::Base::AsyncJob::Package do
           manifest["version"].should == 1
         end
 
-        %w(test.sql test.zip).each do |f|
+        %w(test_dir/test.sql test.sql test.zip).each do |f|
           files_identical?( assets_path(f),
                            File.join(temp_dir, "content", f)
                          ).should == true

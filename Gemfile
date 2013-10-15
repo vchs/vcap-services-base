@@ -16,4 +16,5 @@ group :test do
   gem 'debugger'
   gem 'webmock'
   gem 'rack-test'
+  gem 'mock_redis'
 end

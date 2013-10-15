@@ -32,4 +32,5 @@ Gem::Specification.new do |s|
   s.add_dependency "warden-client"
   s.add_dependency "warden-protocol"
   s.add_dependency "cf-uaa-lib"
+  s.add_dependency "fog"
 end

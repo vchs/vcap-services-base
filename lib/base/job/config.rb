@@ -13,11 +13,15 @@ end
 
 class VCAP::Services::Base::AsyncJob::Config
   class << self
-    attr_reader :redis_config, :redis, :logger
+    attr_reader :redis_config, :redis, :fog_config, :logger
     def redis_config=(config)
       @redis_config = config
       @redis = ::Redis.new config
       Resque.redis = @redis
+    end
+
+    def fog_config=(config)
+      @fog_config = VCAP.symbolize_keys config
     end
 
     def logger=(logger)
