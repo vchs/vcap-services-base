@@ -9,6 +9,19 @@ module VCAP::Services::Base::ProvisionerV2
   attr_accessor :service_instances
   attr_accessor :service_bindings
 
+  def on_instances_info(msg, reply=nil)
+    @logger.debug(
+      "[#{service_description}] " \
+        "Received request to query instance info: #{msg.inspect}"
+    )
+
+    # FIXME For large amount of instances, the length of instances_info may
+    # exceed the packet size limit of NATS. Then @service_instances needs to be
+    # chunked.
+    response = Yajl::Encoder.encode(@service_instances)
+    @node_nats.publish(reply, response)
+  end
+
   # Updates our internal handle state from external v2 handles, e.g., ccdb handles
   # @param array handles
   #    handles[0] contains all instance handles
@@ -190,4 +203,5 @@ module VCAP::Services::Base::ProvisionerV2
   def get_all_handles
     @service_instances.merge(@service_bindings).deep_dup
   end
+
 end
