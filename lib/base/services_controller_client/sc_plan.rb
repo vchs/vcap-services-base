@@ -19,7 +19,7 @@ module VCAP::Services::ServicesControllerClient
           'id' => @unique_id,
           'name' => @name,
           'description' => @description,
-          'version' => 1, # TODO: Is this really needed
+          'version' => "1", # TODO: Is this really needed
           'properties' => properties.to_json
       }
     end
