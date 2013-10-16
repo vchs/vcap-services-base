@@ -23,6 +23,15 @@ require "webmock/rspec"
 
 require "socket"
 
+require "simplecov"
+require 'simplecov-rcov'
+
+SimpleCov.formatter = SimpleCov::Formatter::RcovFormatter
+SimpleCov.start do
+  add_filter "/spec/"
+  add_filter "/vendor/"
+end
+
 TEST_NODE_ID = "node-1"
 TEST_PURGE_INS_HASH =
 {
