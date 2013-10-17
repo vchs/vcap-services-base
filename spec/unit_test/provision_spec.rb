@@ -1385,4 +1385,19 @@ describe ProvisionerTests do
       end
     end
   end
+
+  it 'should receive instance handle when querying on instance_info' do
+    EM.run do
+      instance_info = { test: 123 }
+      nats = double("test_mock_nats")
+      options = { :cc_api_version => "v2" }
+      provisioner = ProvisionerTests.create_provisioner(options)
+      provisioner.service_instances = instance_info
+      provisioner.nats = nats
+      nats.should_receive(:publish).with('reply', instance_info.to_json)
+      provisioner.on_instances_info('msg', 'reply')
+      EM.stop
+    end
+  end
+
 end
