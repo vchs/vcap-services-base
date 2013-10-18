@@ -46,6 +46,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       :responses_5xx => 0,
     }
     @plan_mgmt = options[:plan_management] && options[:plan_management][:plans] || {}
+    @instance_provision_callbacks = {}
 
     gw_version = options[:cc_api_version]
     if gw_version == "v1"
@@ -205,6 +206,9 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       eval %[@node_nats.subscribe("#{service_name}.#{op}") { |msg, reply| on_#{op}(msg, reply) }]
     end
 
+    # service health manager channels
+    @node_nats.subscribe("#{service_name}.health.ok") {|msg, reply| on_health_ok(msg, reply)}
+
     pre_send_announcement()
     @node_nats.publish("#{service_name}.discover")
   end
@@ -327,52 +331,92 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @logger.debug("[#{service_description}] Unprovision service #{instance_id} found instance: #{svc}")
       raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
 
-      node_id = svc[:credentials]["node_id"]
-      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+      # TODO unified string and symbol usage in loacl cache.
+      peers = svc[:configuration]["peers"]
+      raise "Cannot find peers information for #{instance_id}: #{svc}" unless peers
 
       bindings = find_instance_bindings(instance_id)
-      @logger.debug("[#{service_description}] Unprovisioning instance #{instance_id} from #{node_id}")
-      request = UnprovisionRequest.new
-      request.name = instance_id
-      request.bindings = bindings.map{|h| h[:credentials]}
-      @logger.debug("[#{service_description}] Sending request #{request}")
-      subscription = nil
+      subscriptions = []
       timer = EM.add_timer(@node_timeout) {
-        @node_nats.unsubscribe(subscription)
+        subscriptions.each do |s|
+          @node_nats.unsubscribe(s)
+        end
         blk.call(timeout_fail)
       }
-      subscription =
-        @node_nats.request(
-          "#{service_name}.unprovision.#{node_id}", request.encode
-       ) do |msg|
-          # Delete local entries
-          delete_instance_handle(svc)
-          bindings.each do |binding|
-            delete_binding_handle(binding)
-          end
 
-          EM.cancel_timer(timer)
-          @node_nats.unsubscribe(subscription)
-          opts = SimpleResponse.decode(msg)
-          if opts.success
-            blk.call(success())
-          else
-            blk.call(wrap_error(opts))
+      responsed_peers = 0
+      peers.each do |role, config|
+        node_id = config["node_id"]
+        @logger.debug("Unprovisioning peer of #{instance_id} from #{node_id}")
+        request = UnprovisionRequest.new
+        request.name = instance_id
+        request.bindings = bindings.map{|h| h[:credentials]}
+        @logger.debug("Sending unprovision request #{request.inspect}")
+        subscriptions << @node_nats.request(
+            "#{service_name}.unprovision.#{node_id}", request.encode
+        ) do |msg|
+          @logger.debug("unprovision responsed received #{msg}")
+          responsed_peers += 1
+          if responsed_peers == peers.size
+            delete_instance_handle(svc)
+            bindings.each do |binding|
+              delete_binding_handle(binding)
+            end
+
+            EM.cancel_timer(timer)
+            after_unprovision(svc, bindings)
+            opts = SimpleResponse.decode(msg)
+            if opts.success
+              blk.call(success())
+            else
+              blk.call(wrap_error(opts))
+            end
           end
         end
+      end
     rescue => e
       if e.instance_of? ServiceError
         blk.call(failure(e))
       else
         @logger.warn("Exception at unprovision_service #{e}")
+        @logger.warn(e)
         blk.call(internal_fail)
       end
     end
   end
 
+  # default after hook
+  def after_unprovision(svc, bindings)
+    true
+  end
+
+  def plan_peers_number(plan)
+    plan = plan.to_sym
+    peer_number = 1
+    peers_config = @plan_mgmt[plan][:peers] rescue nil
+    peers_config.each do |role, config|
+      peer_number += config[:count]
+    end if peers_config
+
+    return peer_number
+  end
+
+  def on_health_ok(msg, reply)
+    @logger.debug("Receive instance health ok from hm: #{msg}")
+    request = InstanceHealthOK.decode(msg)
+    instance_id = request.instance_id.to_sym
+
+    if @instance_provision_callbacks[instance_id]
+      callbacks = @instance_provision_callbacks[instance_id]
+      callbacks[:success].call
+      @instance_provision_callbacks.delete(instance_id)
+    end
+  rescue => e
+    @logger.warn("Exception at on_health_ok #{e}")
+  end
+
   def provision_service(request, prov_handle=nil, &blk)
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
-    subscription = nil
     plan = request.plan || "free"
     version = request.version
 
@@ -380,7 +424,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
     @logger.debug("[#{service_description}] Picking version nodes from the following #{plan_nodes.count} \'#{plan}\' plan nodes: #{plan_nodes}")
     if plan_nodes.count > 0
-      allow_over_provisioning = @plan_mgmt[plan.to_sym] && @plan_mgmt[plan.to_sym][:allow_over_provisioning] || false
+      plan_config = @plan_mgmt[plan.to_sym]
+      allow_over_provisioning = plan_config && plan_config[:allow_over_provisioning] || false
 
       version_nodes = plan_nodes.select{ |node|
         node["supported_versions"] != nil && node["supported_versions"].include?(version)
@@ -389,51 +434,77 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
       if version_nodes.count > 0
 
-        best_node = version_nodes.max_by { |node| node_score(node) }
+        required_peers = plan_peers_number(plan)
+        # TODO handles required_peers > version_nodes.size
+        best_nodes = version_nodes.sort_by { |node| node_score(node) }[-required_peers..-1]
 
-        if best_node && ( allow_over_provisioning || node_score(best_node) > 0 )
-          best_node = best_node["id"]
-          @logger.debug("[#{service_description}] Provisioning on #{best_node}")
+        if best_nodes.size > 0 && ( allow_over_provisioning ||
+                                   !best_nodes.find {|n| node_score(n) <= 0} )
+          @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
+          service_id = generate_service_id
+          # Subclass should response to generate recipes
+          recipes = generate_recipes(service_id, plan_config, best_nodes)
+          @logger.info("Provision recipes for #{service_id}: #{recipes}")
+          instance_credentials = recipes["credentials"]
+          configuration = recipes["configuration"]
+          peers = configuration["peers"]
+          peers.each do |node, config|
+            node_id = config["node_id"]
+            prov_req = ProvisionRequest.new
+            prov_req.plan = plan
+            prov_req.version = version
+            prov_req.credentials = config["credentials"]
 
-          prov_req = ProvisionRequest.new
-          prov_req.plan = plan
-          prov_req.version = version
-          # use old credentials to provision a service if provided.
-          prov_req.credentials = prov_handle["credentials"] if prov_handle
+            @provision_refs[node_id] += 1
+            @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
+            subject = "#{service_name}.provision.#{node_id}"
+            payload = prov_req.encode
+            @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
+            @node_nats.request(subject, payload) do |msg|
+              @logger.debug("Successfully provision response:[#{msg}]")
+            end
+          end
 
-          @provision_refs[best_node] += 1
-          @nodes[best_node]['available_capacity'] -= @nodes[best_node]['capacity_unit']
-          subscription = nil
+          provision_failure_callback = Proc.new do
+            peers.each do |node, _|
+              node_id = node["id"]
+              @provision_refs[node_id] -= 1
+            end
+            blk.call(timeout_fail)
+          end
 
+          # Recover gateway status if even health manager failed.
           timer = EM.add_timer(@node_timeout) {
-            @provision_refs[best_node] -= 1
-            @node_nats.unsubscribe(subscription)
+            @logger.warn("Provision #{service_id} timeout after after #{@node_timeout} seconds")
+            peers.each do |node, _|
+              node_id = node["id"]
+              @provision_refs[node_id] -= 1
+            end
+            @instance_provision_callbacks.delete service_id.to_sym
             blk.call(timeout_fail)
           }
 
-          subscription = @node_nats.request("#{service_name}.provision.#{best_node}", prov_req.encode) do |msg|
-            @provision_refs[best_node] -= 1
+          provision_success_callback = Proc.new do |*args|
+            @logger.info("Successfully provision response from HM for #{service_id}")
             EM.cancel_timer(timer)
-            @node_nats.unsubscribe(subscription)
-            response = ProvisionResponse.decode(msg)
-
-            if response.success
-              @logger.debug("Successfully provision response:[#{response.inspect}]")
-
-              # credentials is not necessary in cache
-              prov_req.credentials = nil
-              credential = response.credentials
-              svc = {:configuration => prov_req.dup, :service_id => credential['name'], :credentials => credential}
-              @logger.debug("Provisioned: #{svc.inspect}")
-              add_instance_handle(svc)
-              blk.call(success(svc))
-            else
-              blk.call(wrap_error(response))
-            end
+            svc = { configuration:  configuration,
+                    service_id:     service_id,
+                    credentials:    instance_credentials
+            }
+            @logger.debug("Provisioned: #{svc.inspect}")
+            add_instance_handle(svc)
+            blk.call(success(svc))
           end
+
+          #register callbacks
+          @instance_provision_callbacks[service_id.to_sym] = {
+            success:  provision_success_callback,
+            failed:   provision_failure_callback
+          }
+          service_id
         else
           # No resources
-          @logger.warn("[#{service_description}] Could not find a node to provision")
+          @logger.warn("[#{service_description}] Could not find #{required_peers} nodes to provision")
           blk.call(internal_fail)
         end
       else
@@ -446,6 +517,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   rescue => e
     @logger.warn("Exception at provision_service #{e}")
+    @logger.warn(e)
     blk.call(internal_fail)
   end
 
@@ -506,6 +578,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         blk.call(failure(e))
       else
         @logger.warn("Exception at bind_instance #{e}")
+        @logger.warn(e)
         blk.call(internal_fail)
       end
     end
@@ -1107,6 +1180,13 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   rescue => e
     handle_error(e, &blk)
   end
+
+  def generate_service_id
+    SecureRandom.uuid
+  end
+
+  # abstract methods for provision workflow
+  abstract :generate_recipes
 
   # various lifecycle jobs class
   abstract :create_snapshot_job, :rollback_snapshot_job, :delete_snapshot_job, :create_serialized_url_job, :import_from_url_job
