@@ -18,7 +18,6 @@ describe HTTPHandler do
 
   it "refresh times should not exceed max attempts" do
     http_handler.stub(:make_http_request).and_return(unauthorized_request, unauthorized_request)
-    http_handler.should_receive(:refresh_client_auth_token).twice
 
     http_handler.cc_http_request(:uri => '/v2/services',
                             :method => 'get',
@@ -30,7 +29,6 @@ describe HTTPHandler do
   it "should refresh client auth token and retry cc request" do
     http_handler.stub(:make_http_request).and_return(unauthorized_request)
     http_handler.stub(:make_http_request).and_return(authorized_request)
-    http_handler.should_receive(:refresh_client_auth_token).once
 
     http_handler.cc_http_request(:uri => "v2/services/foo", :method => 'get') do |http|
       http.response_header.status.should == 200
