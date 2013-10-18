@@ -345,7 +345,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
             :node_id => @node_id,
             :node_ip => get_host,
             :instances => states }
-    publish("svc.heartbeat", hbs)
+    publish("svc.heartbeat", Yajl::Encoder.encode(hbs))
     nil
   end
 
