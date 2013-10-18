@@ -24,26 +24,6 @@ class ProvisionerTests
     MockErrorNode.new(id, score)
   end
 
-  def self.setup_fake_instance(gateway, provisioner, node)
-    instance_id = "fake_instance"
-    gateway.instance_id = instance_id
-    if provisioner.cc_api_version == 'v1'
-      provisioner.prov_svcs[instance_id] = {
-        :credentials => {
-          'name' => instance_id,
-          'node_id'=>node.node_id
-         },
-          :service_id=>instance_id
-      }
-    elsif provisioner.cc_api_version == 'v2'
-      provisioner.service_instances[instance_id] = {
-        :credentials => {
-          'name' => instance_id,
-          'node_id' => node.node_id
-      }}
-    end
-  end
-
   def self.setup_fake_instance_by_id(gateway, provisioner, node_id)
     instance_id = "fake_instance"
     gateway.instance_id = instance_id
@@ -53,14 +33,29 @@ class ProvisionerTests
           'name' => instance_id,
           'node_id'=>node_id
          },
-          :service_id=>instance_id
+        :service_id=>instance_id,
+        :configuration => {
+          "peers" => {
+            "active" => {
+              "node_id" => node_id,
+            }
+          }
+        }
       }
     elsif provisioner.cc_api_version == 'v2'
       provisioner.service_instances[instance_id] = {
         :credentials => {
           'name' => instance_id,
           'node_id' => node_id
-      }}
+        },
+        :configuration => {
+          "peers" => {
+            "active" => {
+              "node_id" => node_id,
+            }
+          }
+        }
+      }
     end
   end
 
@@ -142,6 +137,29 @@ class ProvisionerTests
       @varz_invoked = true
       super
     end
+
+    def generate_recipes(service_id, plan_config, best_nodes)
+      node1 = best_nodes[0]
+      config = {
+        "service_id" => service_id,
+        "peers" => {
+          "active" => {
+            "node_id" => node1["id"],
+            "credentials" => "xxx"
+          }
+        }
+      }
+      creds = {
+        "name" => service_id,
+        "node_id" => node1["id"]
+      }
+      result = {
+        "configuration" => config,
+        "credentials" => creds
+      }
+
+      result
+    end
   end
 
   module ProvisionerV2MonkeyPatch
@@ -202,6 +220,7 @@ class ProvisionerTests
       @ins_count = ins_count
       @bind_count = bind_count
     end
+
     def send_provision_request
       req = VCAP::Services::Api::GatewayProvisionRequest.new
       req.label = "#{ProvisionerTests::SERVICE_LABEL}"
@@ -211,7 +230,18 @@ class ProvisionerTests
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']
       end
+
     end
+
+    # simulate gateway receive the ack msg from health manager
+    def fire_provision_callback(service_id)
+      req = VCAP::Services::Internal::InstanceHealthOK.new
+      req.instance_id = service_id
+      req.heartbeat_time = "timestamp"
+
+      @provisioner.on_health_ok(req.encode, nil)
+    end
+
     def send_unprovision_request
       @provisioner.unprovision_service(@instance_id) do |res|
         @got_unprovision_response = res['success']

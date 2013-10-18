@@ -17,11 +17,23 @@ class BaseTests
     CAPACITY = 200
     DATABASE_LOCK_FILE = "/tmp/LOCK"
     DISABLED_FILE = "/tmp/DISABLED"
+    PLAN_MGMT = {
+      :plans => {
+        :free => {
+          :peer => {
+            :active=> {
+              :count => 1
+            }
+          }
+        }
+      }
+    }
 
     def self.default(more=nil)
       options = {
         :logger => LOGGER,
         :plan => PLAN,
+        :plan_management => PLAN_MGMT,
         :capacity => CAPACITY,
         :ip_route => IP_ROUTE,
         :mbus => NATS_URI,
