@@ -91,4 +91,9 @@ module VCAP::Services::Internal
     optional :app_url,               String
     optional :service_instance_url,  String
   end
+
+  class InstanceHealthOK < ServiceMessage
+    required :instance_id,          String
+    required :heartbeat_time,       String
+  end
 end

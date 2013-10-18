@@ -170,6 +170,12 @@ module VCAP::Services::Base::ProvisionerV2
       :configuration => entity[:configuration],
       :gateway_name  => entity[:service_id],
     }
+    after_add_instance_handle(entity)
+  end
+
+  # default hook
+  def after_add_instance_handle(entity)
+    true
   end
 
   def add_binding_handle(entity)
@@ -186,6 +192,12 @@ module VCAP::Services::Base::ProvisionerV2
 
   def delete_instance_handle(instance_handle)
     @service_instances.delete(instance_handle[:credentials]["name"])
+    after_delete_instance_handle(instance_handle)
+  end
+
+  #default hook
+  def after_delete_instance_handle(instance_handle)
+    true
   end
 
   def delete_binding_handle(binding_handle)

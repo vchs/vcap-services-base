@@ -161,13 +161,12 @@ describe ProvisionerTests do
       mock_nats = nil
       mock_nodes = nil
       EM.run do
-        mock_nats = mock("test_mock_nats")
+        mock_nats = double("test_mock_nats")
         options = {:cc_api_version => version}
         provisioner = ProvisionerTests.create_provisioner(options)
         # assign mock nats to provisioner
         provisioner.nats = mock_nats
         gateway = ProvisionerTests.create_gateway(provisioner)
-        # provisioner pursues best node to send provision request
         mock_nodes = {
             "node-1" => {
                 "id" => "node-1",
@@ -181,26 +180,26 @@ describe ProvisionerTests do
         provisioner.nodes = mock_nodes
 
         mock_nats.should_receive(:request).with(any_args()).and_return { |*args, &cb|
-            response = VCAP::Services::Internal::ProvisionResponse.new
-            response.success = true
-            response.credentials = {
-                "node_id" => "node-1",
-                "name" => "D501B915-5B50-4C3A-93B7-7E0C48B6A9FA"
-            }
-            cb.call(response.encode)
-            "5"
+          response = VCAP::Services::Internal::ProvisionResponse.new
+          response.success = true
+          response.credentials = {
+            "node_id" => "node-1",
+            "name" => "D501B915-5B50-4C3A-93B7-7E0C48B6A9FA"
+          }
+          cb.call(response.encode)
+          "5"
         }
-        mock_nats.should_receive(:unsubscribe).with(any_args())
 
-        gateway.send_provision_request
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback service_id
 
         gateway.got_provision_response.should be_true
-
         EM.stop
       end
     end
 
     it "should handle error in provision" do
+      pending "Not compatible with new provision workflow."
       provisioner = nil
       gateway = nil
       mock_nats = nil
@@ -315,17 +314,7 @@ describe ProvisionerTests do
         }
         provisioner.nodes = mock_nodes
 
-        mock_nats.should_receive(:request).with(any_args()).and_return { |*args, &cb|
-            response = VCAP::Services::Internal::ProvisionResponse.new
-            response.success = true
-            response.credentials = {
-                "node_id" => "node-1",
-                "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
-            }
-            cb.call(response.encode)
-            "5"
-        }
-        mock_nats.should_receive(:unsubscribe).with(any_args())
+        mock_nats.should_receive(:request).with(any_args())
 
         gateway.send_provision_request # first request get success
         gateway.send_provision_request # second request get error
@@ -397,30 +386,20 @@ describe ProvisionerTests do
         }
         provisioner.nodes = mock_nodes
 
-        mock_nats.should_receive(:request).twice.with(any_args()).\
+        mock_nats.should_receive(:request).exactly(2).times.with(any_args()).\
         and_return { |*args, &cb|
-            provision_request = args[0]
-            if provision_request == "Test.provision.node-1"
-              response = VCAP::Services::Internal::ProvisionResponse.new
-              response.success = true
-              response.credentials = {
-                  "node_id" => "node-1",
-                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
-              }
-            else
-              response = VCAP::Services::Internal::SimpleResponse.new
-              response.success = true
-            end
-            cb.call(response.encode)
-            "5"
+          response = VCAP::Services::Internal::SimpleResponse.new
+          response.success = true
+          cb.call(response.encode)
+          "5"
         }
-        mock_nats.should_receive(:unsubscribe).twice.with(any_args())
 
-        gateway.send_provision_request
-        provision_request.should == "Test.provision.node-1"
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback(service_id)
+        gateway.got_provision_response.should == true
 
         gateway.send_unprovision_request
-        provision_request.should == "Test.unprovision.node-1"
+        gateway.got_unprovision_response.should == true
 
         EM.stop
       end
@@ -451,42 +430,36 @@ describe ProvisionerTests do
         }
         provisioner.nodes = mock_nodes
 
+        service_id = nil
         mock_nats.should_receive(:request).exactly(3).times.with(any_args()).\
-        and_return { |*args, &cb|
-            provision_request = args[0]
-            if provision_request == "Test.provision.node-1"
-              response = VCAP::Services::Internal::ProvisionResponse.new
-              response.success = true
-              response.credentials = {
-                  "node_id" => "node-1",
-                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
-              }
-            elsif provision_request == "Test.unprovision.node-1"
-              response = VCAP::Services::Internal::SimpleResponse.new
-              response.success = true
-            else
-              response = VCAP::Services::Internal::BindResponse.new
-              response.success = true
-              response.credentials = {
-                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
-              }
-            end
-            cb.call(response.encode)
-            "5"
+          and_return { |*args, &cb|
+          if provision_request == "Test.unprovision.node-1"
+            response = VCAP::Services::Internal::SimpleResponse.new
+            response.success = true
+          else
+            response = VCAP::Services::Internal::BindResponse.new
+            response.success = true
+            response.credentials = {
+              "name" => service_id
+            }
+          end
+          cb.call(response.encode)
+          "5"
         }
-        mock_nats.should_receive(:unsubscribe).exactly(3).times.with(any_args())
+        mock_nats.stub(:unsubscribe)
 
-        gateway.send_provision_request
-        provision_request.should == "Test.provision.node-1"
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback(service_id)
+        gateway.got_provision_response.should be_true
 
         gateway.send_bind_request
-        provision_request.should == "Test.bind.node-1"
+
+        cache = provisioner.get_all_handles
+        cache.size.should == 2
 
         gateway.send_unprovision_request
-        provision_request.should == "Test.unprovision.node-1"
-
-        current_cache = provisioner.get_all_handles
-        current_cache.size.should == 0
+        cache = provisioner.get_all_handles
+        cache.size.should == 0
 
         EM.stop
       end
@@ -524,7 +497,6 @@ describe ProvisionerTests do
             cb.call(response.encode)
             "5"
         }
-        mock_nats.should_receive(:unsubscribe).with(any_args())
 
         ProvisionerTests.setup_fake_instance_by_id(gateway, provisioner, "node-1")
 
@@ -584,10 +556,10 @@ describe ProvisionerTests do
             cb.call(response.encode)
             "5"
         }
-        mock_nats.should_receive(:unsubscribe).twice.with(any_args())
+        mock_nats.should_receive(:unsubscribe).once.with(any_args())
 
-        gateway.send_provision_request
-        gateway.got_provision_response.should be_true
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback service_id
 
         gateway.send_bind_request
         gateway.got_bind_response.should be_true
@@ -690,6 +662,7 @@ describe ProvisionerTests do
     end
 
     it "should support restore" do
+      pending "Discard feature"
       provisioner = nil
       gateway = nil
       mock_nats = nil
@@ -742,6 +715,7 @@ describe ProvisionerTests do
     end
 
     it "should handle error in restore" do
+      pending "Discard feature"
       provisioner = nil
       gateway = nil
       mock_nats = nil
@@ -787,6 +761,7 @@ describe ProvisionerTests do
     end
 
     it "should support recover" do
+      pending "Discard feature"
       provisioner = nil
       gateway = nil
       mock_nats = nil
@@ -847,6 +822,7 @@ describe ProvisionerTests do
     end
 
     it "should support migration" do
+      pending "Discard feature"
       provisioner = nil
       gateway = nil
       mock_nats = nil
@@ -899,6 +875,7 @@ describe ProvisionerTests do
     end
 
     it "should handle error in migration" do
+      pending "Discard feature"
       provisioner = nil
       gateway = nil
       mock_nats = nil
@@ -977,7 +954,6 @@ describe ProvisionerTests do
             cb.call(response.encode)
             "5"
         }
-        mock_nats.should_receive(:unsubscribe).with(any_args())
 
         gateway.send_provision_request
         gateway.send_instances_request("node-1")
@@ -1102,9 +1078,9 @@ describe ProvisionerTests do
             cb.call(response.encode)
             "5"
         }
-        mock_nats.should_receive(:unsubscribe).with(any_args())
 
-        gateway.send_provision_request
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback service_id
 
         gateway.got_provision_response.should be_true
 
