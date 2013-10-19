@@ -80,8 +80,9 @@ module VCAP
             # Load offering from ccdb
             logger.info("SCCM(v1): Loading services from services controller")
             failed = false
+            ccdb_catalog = []
             begin
-              catalog_in_ccdb = load_registered_services_from_cc
+              ccdb_catalog = load_registered_services_from_cc
             rescue => e
               failed = true
               logger.error("SCCM(v1): Failed to get currently advertised offerings: #{e.inspect}")
@@ -104,6 +105,16 @@ module VCAP
               logger.error(e1.backtrace)
             ensure
               update_stats("refresh_catalog", failed)
+            end
+
+            # TEMPORARY_CODE: Filter out services not maintained by this gateway
+            # TOOD: This filtering must be done on service controller but we'll do it here until some auth
+            # or filtering is in place on service controller
+            catalog_in_ccdb = []
+            ccdb_catalog.each do |offering|
+              current_catalog.each {|current|
+                catalog_in_ccdb << offering if current.unique_id == offering.unique_id
+              }
             end
 
             # Update
