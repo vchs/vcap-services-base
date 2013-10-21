@@ -31,7 +31,7 @@ class HTTPHandler
 
   def regenerate_http_header
     @cc_req_hdrs = {'Content-Type' => 'application/json'}
-    @cc_req_hdrs << {'Authorization' => @auth_token_generator.call } if @auth_token_generator
+    @cc_req_hdrs.merge!({'Authorization' => @auth_token_generator.call }) if @auth_token_generator
   end
 
 
