@@ -37,7 +37,9 @@ class ProvisionerTests
         :configuration => {
           "peers" => {
             "active" => {
-              "node_id" => node_id,
+              "credentials" => {
+                "node_id" => node_id,
+              }
             }
           }
         }
@@ -51,7 +53,9 @@ class ProvisionerTests
         :configuration => {
           "peers" => {
             "active" => {
-              "node_id" => node_id,
+              "credentials" => {
+                "node_id" => node_id,
+              }
             }
           }
         }
@@ -144,8 +148,9 @@ class ProvisionerTests
         "service_id" => service_id,
         "peers" => {
           "active" => {
-            "node_id" => node1["id"],
-            "credentials" => "xxx"
+            "credentials" => {
+              "node_id" => node1["id"],
+            }
           }
         }
       }

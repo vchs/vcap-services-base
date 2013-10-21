@@ -407,12 +407,16 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     instance_id = request.instance_id.to_sym
 
     if @instance_provision_callbacks[instance_id]
+      @logger.debug("fire success callback for #{instance_id}")
       callbacks = @instance_provision_callbacks[instance_id]
+      timer = callbacks[:timer]
+      EM.cancel_timer(timer)
       callbacks[:success].call
       @instance_provision_callbacks.delete(instance_id)
     end
   rescue => e
     @logger.warn("Exception at on_health_ok #{e}")
+    @logger.warn(e)
   end
 
   def provision_service(request, prov_handle=nil, &blk)
@@ -449,11 +453,12 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           configuration = recipes["configuration"]
           peers = configuration["peers"]
           peers.each do |node, config|
-            node_id = config["node_id"]
+            creds = config["credentials"]
+            node_id = creds["node_id"]
             prov_req = ProvisionRequest.new
             prov_req.plan = plan
             prov_req.version = version
-            prov_req.credentials = config["credentials"]
+            prov_req.credentials = creds
 
             @provision_refs[node_id] += 1
             @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
@@ -499,7 +504,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           #register callbacks
           @instance_provision_callbacks[service_id.to_sym] = {
             success:  provision_success_callback,
-            failed:   provision_failure_callback
+            failed:   provision_failure_callback,
+            timeout_timer: timer
           }
           service_id
         else
