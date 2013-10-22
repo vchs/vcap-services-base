@@ -17,7 +17,7 @@ require "warden_service_spec_helper"
 require "instance_utils_spec_helper"
 require "node_utils_spec_helper"
 require "backup_spec_helper"
-require 'base/service_message'
+require 'vcap_services_messages/service_message'
 require 'base/service_error'
 require "webmock/rspec"
 
@@ -266,7 +266,6 @@ module SpecHelpers
   def generate_cc_handles(gw_version)
     provision_request = VCAP::Services::Internal::ProvisionRequest.new
     plan = 'free'
-    version = '1.0'
     provision_request.plan = plan
     provision_request.version = '1.0'
 
