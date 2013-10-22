@@ -16,3 +16,4 @@ nats-server.pid
 pkg
 tags
 /vendor
+coverage

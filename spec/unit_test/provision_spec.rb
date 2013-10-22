@@ -2,7 +2,7 @@
 require 'helper/spec_helper'
 require 'helper/nats_server_helper'
 require 'eventmachine'
-require 'base/service_message'
+require 'vcap_services_messages/service_message'
 
 include VCAP::Services::Base::Error
 

@@ -6,7 +6,7 @@ require 'socket'
 
 $:.unshift(File.dirname(__FILE__))
 require 'base'
-require 'service_message'
+require 'vcap_services_messages/service_message'
 require 'datamapper_l'
 
 class VCAP::Services::Base::Node < VCAP::Services::Base::Base
