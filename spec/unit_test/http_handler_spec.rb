@@ -5,8 +5,8 @@ describe HTTPHandler do
 
   let(:logger) { Logger.new('/tmp/vcap_services_base.log') }
 
-  let(:unauthorized_request) { stub("unauthorized", response_header: stub(status: 401)) }
-  let(:authorized_request) { stub("unauthorized", response_header: stub(status: 200)) }
+  let(:unauthorized_request) { double("unauthorized", response_header: stub(status: 401)) }
+  let(:authorized_request) { double("unauthorized", response_header: stub(status: 200)) }
   subject(:http_handler) { described_class.new(logger: logger,
                                                uaa_endpoint: 'http://uaa.example.com',
                                                uaa_client_auth_credentials: {username: "ben ginger"},
@@ -18,6 +18,7 @@ describe HTTPHandler do
 
   it "refresh times should not exceed max attempts" do
     http_handler.stub(:make_http_request).and_return(unauthorized_request, unauthorized_request)
+    http_handler.should_receive(:regenerate_http_header).twice
 
     http_handler.cc_http_request(:uri => '/v2/services',
                             :method => 'get',
@@ -29,6 +30,7 @@ describe HTTPHandler do
   it "should refresh client auth token and retry cc request" do
     http_handler.stub(:make_http_request).and_return(unauthorized_request)
     http_handler.stub(:make_http_request).and_return(authorized_request)
+    http_handler.should_receive(:regenerate_http_header).once
 
     http_handler.cc_http_request(:uri => "v2/services/foo", :method => 'get') do |http|
       http.response_header.status.should == 200
