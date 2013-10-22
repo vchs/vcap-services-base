@@ -346,7 +346,8 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
       responsed_peers = 0
       peers.each do |role, config|
-        node_id = config["node_id"]
+        creds = config["credentials"]
+        node_id = creds["node_id"]
         @logger.debug("Unprovisioning peer of #{instance_id} from #{node_id}")
         request = UnprovisionRequest.new
         request.name = instance_id
