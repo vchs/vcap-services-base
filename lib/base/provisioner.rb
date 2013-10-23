@@ -12,7 +12,7 @@ require 'base/job/snapshot'
 require 'base/job/serialization'
 require 'base/snapshot_v2/snapshot_client'
 require 'barrier'
-require 'service_message'
+require 'vcap_services_messages/service_message'
 require 'securerandom'
 
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
