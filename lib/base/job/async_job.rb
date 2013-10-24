@@ -6,9 +6,8 @@ require "config"
 $LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..')
 require "service_error"
 
-module Resque
-  extend self
-  # Patch Resque so we can determine queue by input args.
+module JobPatch
+  # Patch for job so we can determine queue by input args.
   # Job class can define select_queue method and the result will be the queue name.
   def enqueue(klass, *args)
     queue = (klass.respond_to?(:select_queue) && klass.select_queue(*args)) || queue_from_class(klass)

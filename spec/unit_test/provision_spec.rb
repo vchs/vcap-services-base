@@ -1269,6 +1269,30 @@ describe ProvisionerTests do
     end
   end
 
+  describe "Backup jobs V2" do
+    it "should create backup job with service_id, node_id and metadata" do
+      klass = double("subclass")
+      mock_nats = double("test_mock_nats")
+      klass.should_receive(:create).with(
+        :service_id => "service_id",
+        :node_id => "1",
+        :metadata => {},
+      ).and_return(2)
+      EM.run do
+        options = {:cc_api_version => "v2"}
+        provisioner = ProvisionerTests.create_provisioner(options)
+        provisioner.nats = mock_nats
+        provisioner.should_receive(:before_backup_apis).and_return(true)
+        provisioner.should_receive(:create_backup_job).and_return(klass)
+        provisioner.should_receive(:find_backup_peer).and_return("1")
+        provisioner.should_receive(:backup_metadata).and_return({})
+        provisioner.should_receive(:get_job).and_return({})
+        provisioner.create_backup("service_id") {}
+        EM.next_tick {EM.stop}
+      end
+    end
+  end
+
   context 'Update Handles V2' do
     def generate_cc_v2_instance_handles
       handle = []

@@ -100,7 +100,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       next unless lifecycle
       @extensions[plan] ||= {}
       @extensions[plan][:snapshot] = lifecycle.has_key? :snapshot
-      %w(serialization job).each do |ext|
+      %w(backup serialization job).each do |ext|
         ext = ext.to_sym
         @extensions[plan][ext] = true if lifecycle[ext] == "enable"
       end
@@ -448,7 +448,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
           # Subclass should response to generate recipes
-          recipes = generate_recipes(service_id, plan_config, version, best_nodes)
+          recipes = generate_recipes(service_id, plan_config, plan, version, best_nodes)
           @logger.info("Provision recipes for #{service_id}: #{recipes}")
           instance_credentials = recipes["credentials"]
           configuration = recipes["configuration"]
@@ -830,18 +830,21 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  # Snapshot apis filter
-  def before_snapshot_apis service_id, *args, &blk
-    raise "service_id can't be nil" unless service_id
+  [:job, :backup, :snapshot, :serialization].each do |type|
+    define_method("before_#{type}_apis") do |service_id, *args, &blk|
+      begin
+        raise "service_id can't be nil" unless service_id
 
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+        svc = get_instance_handle(service_id)
+        raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
 
-    plan = find_service_plan(svc)
-    extensions_enabled?(plan, :snapshot, &blk)
-  rescue => e
-    handle_error(e, &blk)
-    nil # terminate evoke chain
+        plan = find_service_plan(svc)
+        extensions_enabled?(plan, type, &blk)
+      rescue => e
+        handle_error(e, &blk)
+        nil # terminate evoke chain
+      end
+    end
   end
 
   def find_service_plan(svc)
@@ -850,33 +853,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     plan = config["plan"] || config[:plan]
     raise "Can't find plan for service=#{service_id} #{svc.inspect}" unless plan
     plan
-  end
-
-  # Serialization apis filter
-  def before_serialization_apis service_id, *args, &blk
-    raise "service_id can't be nil" unless service_id
-
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-
-    plan = find_service_plan(svc)
-    extensions_enabled?(plan, :serialization, &blk)
-  rescue => e
-    handle_error(e, &blk)
-    nil # terminate evoke chain
-  end
-
-  def before_job_apis service_id, *args, &blk
-    raise "service_id can't be nil" unless service_id
-
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-
-    plan = find_service_plan(svc)
-    extensions_enabled?(plan, :job, &blk)
-  rescue => e
-    handle_error(e, &blk)
-    nil # terminate evoke chain
   end
 
   def extensions_enabled?(plan, extension, &blk)
@@ -896,7 +872,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     metadata = {
       :plan => find_service_plan(instance),
       :provider => service[:provider] || 'core',
-      :service_version => instance[:configuration][:version],
+      :service_version => instance[:configuration]["version"],
     }
     metadata
   rescue => e
@@ -916,6 +892,32 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(success(job))
   rescue => e
     handle_error(e, &blk)
+  end
+
+  def backup_metadata(service_id)
+    # use snapshot_metadata for now
+    snapshot_metadata(service_id)
+  end
+
+  def create_backup(service_id, opts = {}, &blk)
+    @logger.debug("Create backup job for service_id=#{service_id}")
+    job_id = create_backup_job.create(:service_id => service_id,
+                                      :node_id    => find_backup_peer(service_id),
+                                      :metadata   => backup_metadata(service_id).merge(opts)
+                                     )
+    job = get_job(job_id)
+    @logger.info("CreateBackupJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  def user_triggered_options(params)
+    {}
+  end
+
+  def periodically_triggered_options(params)
+    {}
   end
 
   # Get detail job information by job id.
@@ -1148,6 +1150,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
+  def find_backup_peer(service_id)
+    svc = get_instance_handle(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, "service id #{service_id}") if svc.nil?
+    node_id = svc[:configuration]["backup_peer"]
+    raise "Cannot find backup peer's node_id for #{service_id}" if node_id.nil?
+    node_id
+  end
+
   # Find which node the service instance is running on.
   def find_node(instance_id)
     svc = get_instance_handle(instance_id)
@@ -1204,4 +1214,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   before [:create_serialized_url, :get_serialized_url, :import_from_url], :before_serialization_apis
 
   before :job_details, :before_job_apis
+
+  before [:create_backup], :before_backup_apis
 end
