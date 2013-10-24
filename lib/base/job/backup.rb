@@ -142,6 +142,7 @@ module VCAP::Services::Base::AsyncJob
 
       include Backup
       include Resque::Plugins::Status
+      extend  JobPatch
 
       class << self
         def queue_lookup_key

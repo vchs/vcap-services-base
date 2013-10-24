@@ -461,6 +461,21 @@ module VCAP::Services
       async_mode
     end
 
+    post "/gateway/v2/configurations/:service_id/backups" do
+      service_id = params["service_id"]
+      opts = @provisioner.user_triggered_options(params)
+      @provisioner.create_backup(service_id, opts) do |msg|
+        if msg['success']
+          async_reply(VCAP::Services::Api::Job.new(msg['response']).encode)
+        else
+          async_reply_error(msg['response'])
+        end
+        async_reply
+      end
+      async_mode
+    end
+
+
     ###################### V2 handlers ########################
 
 
