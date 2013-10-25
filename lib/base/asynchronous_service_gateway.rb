@@ -58,6 +58,7 @@ module VCAP::Services
       event_machine.add_periodic_timer(@hb_interval) { send_heartbeat }
       event_machine.next_tick { send_heartbeat }
       Kernel.at_exit do
+        @logger.error("Kernel exit. #{$!}:#{$!.backtrace.join('|')}")   if @logger
         if event_machine.reactor_running?
           # :/ We can't stop others from killing the event-loop here. Let's hope that they play nice
           send_deactivation_notice(false)
