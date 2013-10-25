@@ -71,14 +71,6 @@ module VCAP::Services
         @provisioner.update_handles(resp.handles)
         @handle_fetched = true
         event_machine.cancel_timer(@fetch_handle_timer)
-
-        # TODO remove it when we finish the migration
-        current_version = @version_aliases && @version_aliases[:current]
-        if current_version
-          @provisioner.update_version_info(current_version)
-        else
-          logger.info("No current version alias is supplied, skip update version in CCDB.")
-        end
       end
 
       @fetch_handle_timer = event_machine.add_periodic_timer(@handle_fetch_interval) { fetch_handles(&update_callback) }
