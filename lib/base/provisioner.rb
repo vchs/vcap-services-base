@@ -448,7 +448,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
           # Subclass should response to generate recipes
-          recipes = generate_recipes(service_id, plan_config, best_nodes)
+          recipes = generate_recipes(service_id, plan_config, version, best_nodes)
           @logger.info("Provision recipes for #{service_id}: #{recipes}")
           instance_credentials = recipes["credentials"]
           configuration = recipes["configuration"]

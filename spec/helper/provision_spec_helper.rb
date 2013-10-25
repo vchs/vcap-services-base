@@ -142,10 +142,11 @@ class ProvisionerTests
       super
     end
 
-    def generate_recipes(service_id, plan_config, best_nodes)
+    def generate_recipes(service_id, plan_config, version, best_nodes)
       node1 = best_nodes[0]
       config = {
         "service_id" => service_id,
+        "version" => version,
         "peers" => {
           "active" => {
             "credentials" => {
