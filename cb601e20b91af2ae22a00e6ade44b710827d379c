@@ -1,0 +1,8 @@
+Verified+1: CI Master <cf-ci@rbcon.com>
+Code-Review+2: Felix Hu <hhu@vmware.com>
+Code-Review+1: Henry Chen <hchen@vmware.com>
+Submitted-by: Yanguang Chen <yanguangchen@rbcon.com>
+Submitted-at: Mon, 28 Oct 2013 08:54:38 +0000
+Reviewed-on: http://tempest-reviews.eng.vmware.com/1220
+Project: vcap-services-base
+Branch: refs/heads/master
