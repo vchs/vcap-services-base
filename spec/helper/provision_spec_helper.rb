@@ -36,11 +36,13 @@ class ProvisionerTests
         :service_id=>instance_id,
         :configuration => {
           "peers" => {
-            "active" => {
-              "credentials" => {
-                "node_id" => node_id,
+            "active" => [
+              {
+                "credentials" => {
+                  "node_id" => node_id,
+                }
               }
-            }
+            ]
           }
         }
       }
@@ -52,11 +54,13 @@ class ProvisionerTests
         },
         :configuration => {
           "peers" => {
-            "active" => {
-              "credentials" => {
-                "node_id" => node_id,
+            "active" =>[
+              {
+                "credentials" => {
+                  "node_id" => node_id,
+                }
               }
-            }
+            ]
           }
         }
       }
@@ -148,17 +152,22 @@ class ProvisionerTests
         "service_id" => service_id,
         "version" => version,
         "plan" => plan_config.keys[0].to_s,
+        # peers config is required.
+        # for each peer_config, config["credentials"]["node_id"] is required.
         "peers" => {
-          "active" => {
-            "credentials" => {
-              "node_id" => node1["id"],
+          "active" => [
+            {
+              "credentials" => {
+                "node_id" => node1["id"],
+              }
             }
-          }
+          ]
         }
       }
       creds = {
         "name" => service_id,
-        "node_id" => node1["id"]
+        "node_id" => node1["id"],
+        "connection_string" => "secret"
       }
       result = {
         "configuration" => config,

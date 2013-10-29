@@ -345,32 +345,34 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       }
 
       responsed_peers = 0
-      peers.each do |role, config|
-        creds = config["credentials"]
-        node_id = creds["node_id"]
-        @logger.debug("Unprovisioning peer of #{instance_id} from #{node_id}")
-        request = UnprovisionRequest.new
-        request.name = instance_id
-        request.bindings = bindings.map{|h| h[:credentials]}
-        @logger.debug("Sending unprovision request #{request.inspect}")
-        subscriptions << @node_nats.request(
+      peers.each do |role, peer_configs|
+        peer_configs.each do |config|
+          creds = config["credentials"]
+          node_id = creds["node_id"]
+          @logger.debug("Unprovisioning peer of #{instance_id} from #{node_id}")
+          request = UnprovisionRequest.new
+          request.name = instance_id
+          request.bindings = bindings.map{|h| h[:credentials]}
+          @logger.debug("Sending unprovision request #{request.inspect}")
+          subscriptions << @node_nats.request(
             "#{service_name}.unprovision.#{node_id}", request.encode
-        ) do |msg|
-          @logger.debug("unprovision responsed received #{msg}")
-          responsed_peers += 1
-          if responsed_peers == peers.size
-            delete_instance_handle(svc)
-            bindings.each do |binding|
-              delete_binding_handle(binding)
-            end
+          ) do |msg|
+            @logger.debug("unprovision responsed received #{msg}")
+            responsed_peers += 1
+            if responsed_peers == peers.size
+              delete_instance_handle(svc)
+              bindings.each do |binding|
+                delete_binding_handle(binding)
+              end
 
-            EM.cancel_timer(timer)
-            after_unprovision(svc, bindings)
-            opts = SimpleResponse.decode(msg)
-            if opts.success
-              blk.call(success())
-            else
-              blk.call(wrap_error(opts))
+              EM.cancel_timer(timer)
+              after_unprovision(svc, bindings)
+              opts = SimpleResponse.decode(msg)
+              if opts.success
+                blk.call(success())
+              else
+                blk.call(wrap_error(opts))
+              end
             end
           end
         end
@@ -447,27 +449,37 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
                                    !best_nodes.find {|n| node_score(n) <= 0} )
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
-          # Subclass should response to generate recipes
+          # Subclass should response to generate recipes.
+          # Valid recipes should contain "credentials" and "configuration"
+          # "credentials" is the connection string presents to end user. Base code treat the
+          # credentials as a opaque string.
+          #
+          # "configuration" contains any data that need persistent when gateway restart such as version and plan.
+          # The base code requires configuration contains specific peer configurations.
+          #
+          # An example for generate_recipes could be found at spec/helper/provision_spec_helper.rb
           recipes = generate_recipes(service_id, { plan.to_sym => plan_config },version, best_nodes)
           @logger.info("Provision recipes for #{service_id}: #{recipes}")
           instance_credentials = recipes["credentials"]
           configuration = recipes["configuration"]
           peers = configuration["peers"]
-          peers.each do |node, config|
-            creds = config["credentials"]
-            node_id = creds["node_id"]
-            prov_req = ProvisionRequest.new
-            prov_req.plan = plan
-            prov_req.version = version
-            prov_req.credentials = creds
+          peers.each do |role, peer_configs|
+            peer_configs.each do |config|
+              creds = config["credentials"]
+              node_id = creds["node_id"]
+              prov_req = ProvisionRequest.new
+              prov_req.plan = plan
+              prov_req.version = version
+              prov_req.credentials = creds
 
-            @provision_refs[node_id] += 1
-            @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
-            subject = "#{service_name}.provision.#{node_id}"
-            payload = prov_req.encode
-            @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
-            @node_nats.request(subject, payload) do |msg|
-              @logger.debug("Successfully provision response:[#{msg}]")
+              @provision_refs[node_id] += 1
+              @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
+              subject = "#{service_name}.provision.#{node_id}"
+              payload = prov_req.encode
+              @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
+              @node_nats.request(subject, payload) do |msg|
+                @logger.debug("Successfully provision response:[#{msg}]")
+              end
             end
           end
 
