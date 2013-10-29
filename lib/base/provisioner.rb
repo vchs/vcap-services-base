@@ -447,27 +447,34 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
                                    !best_nodes.find {|n| node_score(n) <= 0} )
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
-          # Subclass should response to generate recipes
+          # Subclass should response to generate recipes.
+          # Valid recipes should contain "credentials" and "configuration"
+          # "credentials" is the connection string presents to end user. Base code treat the 
+          # "credentials" as opaque string.
+          # 
+          # "configuration" should contains peer configurations
           recipes = generate_recipes(service_id, plan_config, best_nodes)
           @logger.info("Provision recipes for #{service_id}: #{recipes}")
           instance_credentials = recipes["credentials"]
           configuration = recipes["configuration"]
           peers = configuration["peers"]
-          peers.each do |node, config|
-            creds = config["credentials"]
-            node_id = creds["node_id"]
-            prov_req = ProvisionRequest.new
-            prov_req.plan = plan
-            prov_req.version = version
-            prov_req.credentials = creds
-
-            @provision_refs[node_id] += 1
-            @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
-            subject = "#{service_name}.provision.#{node_id}"
-            payload = prov_req.encode
-            @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
-            @node_nats.request(subject, payload) do |msg|
-              @logger.debug("Successfully provision response:[#{msg}]")
+          peers.each do |role, peer_configs|
+            peer_configs.each do |config|
+              creds = config["credentials"]
+              node_id = creds["node_id"]
+              prov_req = ProvisionRequest.new
+              prov_req.plan = plan
+              prov_req.version = version
+              prov_req.credentials = creds
+  
+              @provision_refs[node_id] += 1
+              @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
+              subject = "#{service_name}.provision.#{node_id}"
+              payload = prov_req.encode
+              @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
+              @node_nats.request(subject, payload) do |msg|
+                @logger.debug("Successfully provision response:[#{msg}]")
+              end
             end
           end
 
