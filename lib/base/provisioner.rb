@@ -10,6 +10,7 @@ require 'base/simple_aop'
 require 'base/job/async_job'
 require 'base/job/snapshot'
 require 'base/job/serialization'
+require 'base/job/backup'
 require 'base/snapshot_v2/snapshot_client'
 require 'barrier'
 require 'vcap_services_messages/service_message'
@@ -19,6 +20,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
   include VCAP::Services::Base::AsyncJob
   include VCAP::Services::Base::AsyncJob::Snapshot
+  include VCAP::Services::Base::AsyncJob::Backup
   include Before
 
   BARRIER_TIMEOUT = 2
@@ -921,6 +923,30 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     {}
   end
 
+  def enumerate_backups(service_id, &blk)
+    @logger.debug("Get backups for service_id=#{service_id}")
+    svc = get_instance_handle(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    res = DBClient.query_instance_all_backups(service_id)
+    res.each { |k, v| v = filter_keys(v) unless k == :summary }
+    blk.call(success(res))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
+  # Get detail backup information
+  #
+  def get_backup(service_id, backup_id, &blk)
+    @logger.debug("Get backup_id=#{backup_id} for service_id=#{service_id}")
+    svc = get_instance_handle(service_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
+    backup = DBClient.get_single_backup_info(service_id, backup_id)
+    raise ServiceError.new(ServiceError::NOT_FOUND, backup_id) unless backup
+    blk.call(success(filter_keys(backup)))
+  rescue => e
+    handle_error(e, &blk)
+  end
+
   # Get detail job information by job id.
   #
   def job_details(service_id, job_id, &blk)
@@ -1216,5 +1242,5 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
 
   before :job_details, :before_job_apis
 
-  before [:create_backup], :before_backup_apis
+  before [:create_backup, :get_backup, :enumerate_backups], :before_backup_apis
 end

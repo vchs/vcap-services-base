@@ -11,7 +11,8 @@ module VCAP::Services::Base::AsyncJob
     include VCAP::Services::Base::Error
 
     LOCAL_BACKUP_PATH = "/tmp".freeze
-    FILTER_KEYS = %w(backup_id date).freeze
+    FILTER_KEYS = %w(backup_id date description).freeze
+    INSTANCE_SUMMARY_KEY = :summary
 
     def fmt_time()
       # UTC time in ISO 8601 format.
@@ -49,9 +50,25 @@ module VCAP::Services::Base::AsyncJob
         end
 
         def execute_as_transaction
+          # don't use any type of "get" commands in the given block
+          # otherwise, "QUEUED" is the value that will be returned
           connection.multi do
             yield
           end
+        end
+
+        def query_instance_all_backups(service_id)
+          instance_info = get_instance_backup_info(service_id)
+          backup_keys = connection.keys("#{SINGLE_BACKUP_KEY_PREFIX}:#{service_id}*")
+          backups = connection.mget(*backup_keys)
+
+          result = { INSTANCE_SUMMARY_KEY => instance_info }
+          if backup_keys
+            backup_ids = backup_keys.map { |key| key.split(":").last.to_sym }
+            backups = backups.map { |b| VCAP.symbolize_keys(Yajl::Parser.parse(b)) }
+            result.merge! Hash[backup_ids.zip backups]
+          end
+          result
         end
 
         def get_instance_backup_info(service_id)
