@@ -47,6 +47,19 @@ module VCAP::Services::Base::AsyncJob::Backup
       DBClient.set_single_backup_info(service_id,  backup_id, invalid_msg)
       DBClient.get_single_backup_info(service_id, backup_id).should == nil
     end
+
+    it "should be able to query all the metadata for an instance" do
+      service_id = "1"
+      backup_ids = 3.times.map { |i| i.to_s }
+      msgs = backup_ids.reduce({}) { |result, id| result[id.to_sym] = {:test => id}; result }
+
+      backup_ids.each do |id|
+        DBClient.set_single_backup_info(service_id, id, msgs[id.to_sym])
+      end
+
+      result = DBClient.query_instance_all_backups(service_id)
+      result.should =~ msgs.values
+    end
   end
 
   describe StorageClient do

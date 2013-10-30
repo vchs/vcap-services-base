@@ -461,7 +461,7 @@ module VCAP::Services
       async_mode
     end
 
-    post "/gateway/v2/configurations/:service_id/backups" do
+    post "/gateway/v1/configurations/:service_id/backups" do
       service_id = params["service_id"]
       opts = @provisioner.user_triggered_options(params)
       @provisioner.create_backup(service_id, opts) do |msg|
@@ -474,6 +474,36 @@ module VCAP::Services
       end
       async_mode
     end
+
+    # Enumerate backup
+    get "/gateway/v1/configurations/:service_id/backups" do
+      service_id = params["service_id"]
+      logger.info("Enumerate backups request for service_id=#{service_id}")
+      @provisioner.enumerate_backups(service_id) do |msg|
+        if msg['success']
+          async_reply(Yajl::Encoder.encode(msg['response']))
+        else
+          async_reply_error(msg['response'])
+        end
+      end
+      async_mode
+    end
+
+    # Get backup details
+    get "/gateway/v1/configurations/:service_id/backups/:backup_id" do
+      service_id = params["service_id"]
+      backup_id = params["backup_id"]
+      logger.info("Get backup_id=#{backup_id} request for service_id=#{service_id}")
+      @provisioner.get_backup(service_id, backup_id) do |msg|
+        if msg['success']
+          async_reply(Yajl::Encoder.encode(msg['response']))
+        else
+          async_reply_error(msg['response'])
+        end
+      end
+      async_mode
+    end
+
 
 
     ###################### V2 handlers ########################

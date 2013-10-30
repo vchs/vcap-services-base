@@ -1269,25 +1269,53 @@ describe ProvisionerTests do
     end
   end
 
-  describe "Backup jobs V2" do
-    it "should create backup job with service_id, node_id and metadata" do
-      klass = double("subclass")
-      mock_nats = double("test_mock_nats")
-      klass.should_receive(:create).with(
-        :service_id => "service_id",
-        :node_id => "1",
-        :metadata => {},
-      ).and_return(2)
+  describe "Backup jobs V1" do
+
+    let(:mock_nats) { double("test_mock_nats") }
+    let(:db_client) { VCAP::Services::Base::AsyncJob::Backup::DBClient }
+
+    before do
+      options = {:cc_api_version => "v2"}
       EM.run do
-        options = {:cc_api_version => "v2"}
-        provisioner = ProvisionerTests.create_provisioner(options)
-        provisioner.nats = mock_nats
-        provisioner.should_receive(:before_backup_apis).and_return(true)
-        provisioner.should_receive(:create_backup_job).and_return(klass)
-        provisioner.should_receive(:find_backup_peer).and_return("1")
-        provisioner.should_receive(:backup_metadata).and_return({})
-        provisioner.should_receive(:get_job).and_return({})
-        provisioner.create_backup("service_id") {}
+        @provisioner = ProvisionerTests.create_provisioner(options)
+        @provisioner.nats = mock_nats
+        @provisioner.should_receive(:before_backup_apis).and_return(true)
+        EM.next_tick {EM.stop}
+      end
+    end
+
+    it "should create backup job with service_id, node_id and metadata" do
+      EM.run do
+        klass = double("subclass")
+        klass.should_receive(:create).with(
+          :service_id => "service_id",
+          :node_id => "1",
+          :metadata => {},
+        ).and_return(2)
+
+        @provisioner.should_receive(:create_backup_job).and_return(klass)
+        @provisioner.should_receive(:find_backup_peer).and_return("1")
+        @provisioner.should_receive(:backup_metadata).and_return({})
+        @provisioner.should_receive(:get_job).and_return({})
+        @provisioner.create_backup("service_id") {}
+        EM.next_tick {EM.stop}
+      end
+    end
+
+    it "should enumerate backups" do
+      EM.run do
+        @provisioner.should_receive(:get_instance_handle).and_return({})
+        db_client.should_receive(:query_instance_all_backups).and_return({})
+        @provisioner.enumerate_backups("service_id") {}
+        EM.next_tick {EM.stop}
+      end
+    end
+
+    it "should get backup detail" do
+      EM.run do
+        @provisioner.should_receive(:get_instance_handle).and_return({})
+        db_client.should_receive(:get_single_backup_info).and_return({})
+        @provisioner.get_backup("service_id", "backup_id") {}
         EM.next_tick {EM.stop}
       end
     end
