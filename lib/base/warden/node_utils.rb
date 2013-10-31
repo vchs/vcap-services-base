@@ -34,12 +34,11 @@ module VCAP::Services::Base::Warden::NodeUtils
   def new_port(port=nil)
     @free_ports_lock.synchronize do
       raise "No ports available." if @free_ports.empty?
-      if port.nil? || !@free_ports.include?(port)
-        port = @free_ports.first
-        @free_ports.delete(port)
-      else
-        @free_ports.delete(port)
-      end
+      raise ServiceError.new(ServiceError::PORT_IN_USE, port) if port &&
+        !@free_ports.include?(port)
+
+      port = @free_ports.first unless port
+      @free_ports.delete(port)
     end
     port
   end
