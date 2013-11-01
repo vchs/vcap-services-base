@@ -61,7 +61,7 @@ module VCAP::Services::Base::ProvisionerV2
         # NOTE on gateway we have have 'configuration' field in instance handle in replacement
         # of the 'gateway_data' field as in ccdb handle, this is for a easy management/translation
         # between gateway v1 and v2 provisioner code
-        :configuration => handle['gateway_data'],
+        :configuration => handle['gateway_data'] || handle['configuration'],
         :gateway_name  => handle['credentials']['name'],
       }
     end
