@@ -95,12 +95,6 @@ module VCAP::Services::Base::ProvisionerV1
 
   def add_instance_handle(response)
     @prov_svcs[response[:service_id]] = response
-    after_add_instance_handle(response)
-  end
-
-  # default hook
-  def after_add_instance_handle(entity)
-    true
   end
 
   def add_binding_handle(response)
@@ -109,12 +103,6 @@ module VCAP::Services::Base::ProvisionerV1
 
   def delete_instance_handle(instance_handle)
     @prov_svcs.delete(instance_handle[:service_id])
-    after_delete_instance_handle(instance_handle)
-  end
-
-  #default hook
-  def after_delete_instance_handle(instance_handle)
-    true
   end
 
   def delete_binding_handle(binding_handle)

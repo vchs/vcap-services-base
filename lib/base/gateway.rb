@@ -87,7 +87,10 @@ class VCAP::Services::Base::Gateway
     @config[:port] ||= VCAP.grab_ephemeral_port
     @config[:service][:label] = "#{@config[:service][:name]}-#{@config[:service][:version]}"
     @config[:service][:url]   = "http://#{@config[:host]}:#{@config[:port]}"
-    node_timeout = @config[:node_timeout] || 5
+    @config[:node_timeout] ||= 5
+    @config[:additional_options] = additional_options
+    @config[:snapshot_db] = @config[:resque]
+    @config[:cloud_controller_uri] ||= "api.vcap.me"
 
     EM.error_handler do |ex|
       @config[:logger].fatal("#{ex} #{ex.backtrace.join("|")}")
@@ -96,28 +99,10 @@ class VCAP::Services::Base::Gateway
 
     # Go!
     EM.run do
-      sp = provisioner_class.new(
-             :logger   => @config[:logger],
-             :index    => @config[:index],
-             :ip_route => @config[:ip_route],
-             :mbus => @config[:mbus],
-             :node_timeout => node_timeout,
-             :z_interval => @config[:z_interval],
-             :max_nats_payload => @config[:max_nats_payload],
-             :additional_options => additional_options,
-             :status => @config[:status],
-             :plan_management => @config[:plan_management],
-             :service => @config[:service],
-             :download_url_template => @config[:download_url_template],
-             :cc_api_version => @config[:cc_api_version] || "v1" ,
-             :snapshot_db => @config[:resque],
-           )
+      sp = provisioner_class.new(@config)
 
       opts = @config.dup
       opts[:provisioner] = sp
-      opts[:node_timeout] = node_timeout
-      opts[:cloud_controller_uri] = @config[:cloud_controller_uri] || "api.vcap.me"
-
       sg = async_gateway_class.new(opts)
 
       server = Thin::Server.new(@config[:host], @config[:port], sg)
@@ -136,10 +121,9 @@ class VCAP::Services::Base::Gateway
     config = YAML.load_file(config_file)
     config = VCAP.symbolize_keys(config)
 
+    config[:cc_api_version] ||= 'v1'
 
-    cc_api_version = config[:cc_api_version] || "v1"
-
-    if cc_api_version == "v1"
+    if config[:cc_api_version] == "v1"
       token = config[:token]
       raise "Token missing" unless token
       raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))

@@ -24,10 +24,31 @@ class ProvisionerTests
     MockErrorNode.new(id, score)
   end
 
+  def self.setup_fake_instance(gateway, provisioner, node)
+    instance_id = "fake_instance"
+    gateway.instance_id = instance_id
+    if provisioner.provisioner_version == 'v1'
+      provisioner.prov_svcs[instance_id] = {
+        :credentials => {
+          'name' => instance_id,
+          'node_id'=>node.node_id
+         },
+          :service_id=>instance_id
+      }
+    elsif provisioner.provisioner_version == 'v2' ||
+      provisioner.provisioner_version == 'v3'
+      provisioner.service_instances[instance_id] = {
+        :credentials => {
+          'name' => instance_id,
+          'node_id' => node.node_id
+      }}
+    end
+  end
+
   def self.setup_fake_instance_by_id(gateway, provisioner, node_id)
     instance_id = "fake_instance"
     gateway.instance_id = instance_id
-    if provisioner.cc_api_version == 'v1'
+    if provisioner.provisioner_version == 'v1'
       provisioner.prov_svcs[instance_id] = {
         :credentials => {
           'name' => instance_id,
@@ -44,7 +65,9 @@ class ProvisionerTests
           }
         }
       }
-    elsif provisioner.cc_api_version == 'v2'
+    elsif provisioner.provisioner_version == 'v2' ||
+      provisioner.provisioner_version == 'v3'
+
       provisioner.service_instances[instance_id] = {
         :credentials => {
           'name' => instance_id,
@@ -68,12 +91,12 @@ class ProvisionerTests
     binding_id = "fake_binding"
     gateway.instance_id = instance_id
     gateway.binding_id = binding_id
-    if provisioner.cc_api_version == 'v1'
+    if provisioner.provisioner_version == 'v1'
       provisioner.prov_svcs[binding_id] = {
         :credentials => { 'name' => instance_id, 'node_id' => node.node_id },
         :service_id  => binding_id
       }
-    elsif provisioner.cc_api_version == 'v2'
+    elsif provisioner.provisioner_version == 'v2'
       provisioner.service_bindings[binding_id] = {
         :credentials  => { 'name' => instance_id, 'node_id' => node.node_id },
         :gateway_name => binding_id,
@@ -86,12 +109,12 @@ class ProvisionerTests
     binding_id = "fake_binding"
     gateway.instance_id = instance_id
     gateway.binding_id = binding_id
-    if provisioner.cc_api_version == 'v1'
+    if provisioner.provisioner_version == 'v1'
       provisioner.prov_svcs[binding_id] = {
         :credentials => { 'name' => instance_id, 'node_id' => node_id },
         :service_id  => binding_id
       }
-    elsif provisioner.cc_api_version == 'v2'
+    elsif provisioner.provisioner_version == 'v2'
       provisioner.service_bindings[binding_id] = {
         :credentials  => { 'name' => instance_id, 'node_id' => node_id },
         :gateway_name => binding_id,
@@ -100,7 +123,7 @@ class ProvisionerTests
   end
 
   class ProvisionerTester < VCAP::Services::Base::Provisioner
-    attr_accessor :cc_api_version
+    attr_accessor :provisioner_version
     attr_accessor :varz_invoked
     attr_reader   :staging_orphan_instances
     attr_reader   :staging_orphan_bindings
@@ -109,8 +132,8 @@ class ProvisionerTests
 
     def initialize(options)
       super(options)
-      @cc_api_version = options[:cc_api_version]
-      extend ProvisionerV2MonkeyPatch if @cc_api_version == "v2"
+      @provisioner_version = options[:provisioner_version]
+      extend ProvisionerV2MonkeyPatch if @provisioner_version == "v2"
       @varz_invoked = false
       @healthz_invoked = false
     end

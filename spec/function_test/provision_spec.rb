@@ -13,7 +13,7 @@ describe ProvisionerTests do
       # start provisioner, then node
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { node = ProvisionerTests.create_node(1) }
@@ -30,7 +30,7 @@ describe ProvisionerTests do
       # start provisioner, then nodes
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { node1 = ProvisionerTests.create_node(1) }
@@ -47,15 +47,13 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { EM.stop }
       end
       gateway.got_provision_response.should be_true
       provisioner.get_all_instance_handles.size.should == 1
@@ -63,13 +61,12 @@ describe ProvisionerTests do
     end
 
     it "should handle error in provision (#{version})" do
-      pending "Not compatible with new provision workflow."
       provisioner = nil
       gateway = nil
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -92,7 +89,7 @@ describe ProvisionerTests do
       node2 = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
@@ -112,22 +109,13 @@ describe ProvisionerTests do
       node2 = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id1 = nil
-        service_id2 = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node1 = ProvisionerTests.create_node(1, 1) }
         Do.at(3) { node2 = ProvisionerTests.create_node(2, 1) }
-        Do.at(4) do
-          service_id1 = gateway.send_provision_request
-          service_id2 = gateway.send_provision_request
-        end
-        Do.at(5) do
-          gateway.fire_provision_callback service_id1
-          gateway.fire_provision_callback service_id2
-        end
+        Do.at(4) { gateway.send_provision_request; gateway.send_provision_request }
         Do.at(10) { gateway.send_provision_request }
         Do.at(15) { EM.stop }
       end
@@ -143,7 +131,7 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -164,16 +152,14 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { gateway.send_unprovision_request }
-        Do.at(6) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_unprovision_request }
+        Do.at(5) { EM.stop }
       end
       node.got_unprovision_request.should be_true
       provisioner.get_all_instance_handles.size.should == 0
@@ -185,18 +171,16 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
           provisioner.get_all_handles.size.should == 0
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { gateway.send_bind_request }
-        Do.at(6) { gateway.send_unprovision_request }
-        Do.at(7) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) { gateway.send_unprovision_request }
+        Do.at(6) { EM.stop }
       end
       node.got_provision_request.should be_true
       node.got_bind_request.should be_true
@@ -210,15 +194,12 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-        Do.at(3) do
-          ProvisionerTests.setup_fake_instance_by_id(
-            gateway, provisioner, node.node_id)
-        end
+        Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
         Do.at(4) { gateway.send_unprovision_request }
         Do.at(5) { EM.stop }
       end
@@ -237,16 +218,14 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { gateway.send_bind_request }
-        Do.at(6) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_bind_request }
+        Do.at(5) { EM.stop }
       end
       gateway.got_provision_response.should be_true
       gateway.got_bind_response.should be_true
@@ -260,7 +239,7 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -283,7 +262,7 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -304,13 +283,12 @@ describe ProvisionerTests do
     end
 
     it "should support restore (#{version})" do
-      pending "Discard feature"
       provisioner = nil
       gateway = nil
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
@@ -323,13 +301,12 @@ describe ProvisionerTests do
     end
 
     it "should handle error in restore (#{version})" do
-      pending "Discard feature"
       provisioner = nil
       gateway = nil
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -344,13 +321,12 @@ describe ProvisionerTests do
     end
 
     it "should support recover (#{version})" do
-      pending "Discard feature"
       provisioner = nil
       gateway = nil
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
@@ -363,13 +339,12 @@ describe ProvisionerTests do
     end
 
     it "should support migration (#{version})" do
-      pending "Discard feature"
       provisioner = nil
       gateway = nil
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
@@ -382,13 +357,12 @@ describe ProvisionerTests do
     end
 
     it "should handle error in migration (#{version})" do
-      pending "Discard feature"
       provisioner = nil
       gateway = nil
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -408,16 +382,14 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { gateway.send_instances_request("node-1") }
-        Do.at(6) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { gateway.send_instances_request("node-1") }
+        Do.at(5) { EM.stop }
       end
       gateway.got_instances_response.should be_true
     end
@@ -428,7 +400,7 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -448,17 +420,15 @@ describe ProvisionerTests do
       EM.run do
         Do.at(0) do
           options = {
-            :cc_api_version => version,
+            :provisioner_version => version,
             :plan_management => {:plans => {:free => {:allow_over_provisioning => true }}},
           }
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1, -1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { EM.stop }
       end
       node.got_provision_request.should be_true
       provisioner.get_all_instance_handles.size.should == 1
@@ -472,17 +442,15 @@ describe ProvisionerTests do
       EM.run do
         Do.at(0) do
           options = {
-            :cc_api_version => version,
+            :provisioner_version => version,
             :plan_management => {:plans => {:free => {:allow_over_provisioning => false }}},
           }
           provisioner = ProvisionerTests.create_provisioner(options)
         end
-        service_id = nil
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
         Do.at(2) { node = ProvisionerTests.create_node(1, -1) }
-        Do.at(3) { service_id = gateway.send_provision_request }
-        Do.at(4) { gateway.fire_provision_callback service_id }
-        Do.at(5) { EM.stop }
+        Do.at(3) { gateway.send_provision_request }
+        Do.at(4) { EM.stop }
       end
       node.got_provision_request.should be_false
       provisioner.get_all_instance_handles.size.should == 0
@@ -495,7 +463,7 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
@@ -521,7 +489,7 @@ describe ProvisionerTests do
       node = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
@@ -541,7 +509,7 @@ describe ProvisionerTests do
       node2 = nil
       EM.run do
         Do.at(0) do
-          options = {:cc_api_version => version}
+          options = {:provisioner_version => version}
           provisioner = ProvisionerTests.create_provisioner(options)
         end
         Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner, 1024 * 128, 1024 * 16) }
