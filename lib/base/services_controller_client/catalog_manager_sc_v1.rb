@@ -164,16 +164,14 @@ module VCAP
           logger.info("SCCM(v1): Fetching all service instance handles from services controller: #{@cld_ctrl_uri}#{@service_instance_uri}")
           instance_handle_list = {}
 
-          #registered_services = load_registered_services_from_cc
-          #
-          #registered_services.each do |registered_service|
-          #  registered_service.plans.each do |plan_details|
-          #    plan_guid = plan_details.guid
-          #    instance_handles_query = "?q=service_plan_guid:#{plan_guid}"
-          #    instance_handles = fetch_instance_handles_from_cc(instance_handles_query)
-          #    instance_handle_list.merge!(instance_handles) if instance_handles
-          #  end
-          #end
+          registered_services = load_registered_services_from_cc
+
+          registered_services.each do |registered_service|
+            registered_service.plans.each do |plan|
+              instance_handles = fetch_instance_handles_from_cc(plan)
+              instance_handle_list.merge!(instance_handles) if instance_handles
+            end
+          end
           logger.info("SCCM(v1): Successfully fetched all service instance handles from services controller: #{@cld_ctrl_uri}#{@service_instance_uri}")
           instance_handle_list
         end
@@ -183,19 +181,19 @@ module VCAP
         # from services_controller using a customized query for /v2/service_binding api
         #
         # @param string instance_handles_query
-        def fetch_instance_handles_from_cc(instance_handles_query)
-          logger.info("SCCM(v1): Fetching service instance handles from services controller: #{@cld_ctrl_uri}#{@service_instance_uri}#{instance_handles_query}")
+        def fetch_instance_handles_from_cc(plan)
+          logger.info("SCCM(v1): Fetching service instance handles from services controller for plan: #{plan.name}")
 
           instance_handles = {}
-          ## currently we are fetching all the service instances from different plans;
-          ## TODO: add a query parameter in ccng v2 to support a query from service name to instance handle;
-          #service_instance_uri = "#{@service_instances_uri}#{instance_handles_query}"
-          #
-          #@multiple_page_getter.each(service_instance_uri, "service instance handles") do |resources|
-          #  instance_info = resources['entity']
-          #  instance_handles[instance_info['credentials']['name']] = instance_info
-          #  @handle_guid[instance_info['credentials']['name']] = resources['metadata']['guid']
-          #end
+
+          service_instance_uri = "#{@service_instances_uri}?service_plan_id=#{plan.guid}"
+
+          @multiple_page_getter.each(service_instance_uri, "Service Instance Handles") do |i|
+            instance_entity = i.fetch('entity')
+            instance_properties = JSON.parse(instance_entity["properties"])
+            instance_handles[instance_properties["credentials"]["name"]] = instance_properties
+            @handle_guid[instance_properties["credentials"]["name"]] = instance_properties["service_id"]
+          end
           instance_handles
         rescue => e
           logger.error("SCCM(v1): Error decoding reply from gateway: #{e.backtrace}")
@@ -207,35 +205,35 @@ module VCAP
 
           # currently we will fetch each binding handle according to instance handle
           # TODO: add a query parameter in ccng v2 to support query from service name to binding handle;
-          instance_handles.each do |instance_id, _|
-            binding_handles_query = "?q=service_instance_guid:#{@handle_guid[instance_id]}"
-            binding_handles = fetch_binding_handles_from_cc(binding_handles_query)
-            binding_handles_list.merge!(binding_handles) if binding_handles
-          end
+          #instance_handles.each do |instance_id, _|
+          #  binding_handles_query = "?q=service_instance_guid:#{@handle_guid[instance_id]}"
+          #  binding_handles = fetch_binding_handles_from_cc(binding_handles_query)
+          #  binding_handles_list.merge!(binding_handles) if binding_handles
+          #end
           logger.info("SCCM(v1): Successfully fetched all service binding handles from services controller: #{@cld_ctrl_uri}#{@service_instance_uri}")
           binding_handles_list
         end
 
-        # fetch binding handles from services_controller
-        # this function allows users to get a dedicated set of binding handles
-        # from services_controller using a customized query for /v2/service_binding api
+        ## fetch binding handles from services_controller
+        ## this function allows users to get a dedicated set of binding handles
+        ## from services_controller using a customized query for /v2/service_binding api
+        ##
+        ## @param string binding_handles_query
+        #def fetch_binding_handles_from_cc(binding_handles_query)
+        #  logger.info("SCCM(v1): Fetching service binding handles from services controller: #{@cld_ctrl_uri}#{@service_bindings_uri}#{binding_handles_query}")
         #
-        # @param string binding_handles_query
-        def fetch_binding_handles_from_cc(binding_handles_query)
-          logger.info("SCCM(v1): Fetching service binding handles from services controller: #{@cld_ctrl_uri}#{@service_bindings_uri}#{binding_handles_query}")
-
-          binding_handles = {}
-          binding_handles_uri = "#{@service_bindings_uri}#{binding_handles_query}"
-
-          @multiple_page_getter.each(binding_handles_uri, "service binding handles") do |resources|
-            binding_info = resources['entity']
-            binding_handles[binding_info['gateway_name']] = binding_info
-            @handle_guid[binding_info['gateway_name']] = resources['metadata']['guid']
-          end
-          binding_handles
-        rescue => e
-          logger.error("SCCM(v1): Error decoding reply from gateway: #{e}")
-        end
+        #  binding_handles = {}
+        #  binding_handles_uri = "#{@service_bindings_uri}#{binding_handles_query}"
+        #
+        #  @multiple_page_getter.each(binding_handles_uri, "service binding handles") do |resources|
+        #    binding_info = resources['entity']
+        #    binding_handles[binding_info['gateway_name']] = binding_info
+        #    @handle_guid[binding_info['gateway_name']] = resources['metadata']['guid']
+        #  end
+        #  binding_handles
+        #rescue => e
+        #  logger.error("SCCM(v1): Error decoding reply from gateway: #{e}")
+        #end
 
         def advertise_services(current_catalog, catalog_in_ccdb, active=true)
           logger.info("SCCM(v1): #{active ? "Activate" : "Deactivate"} services...")
