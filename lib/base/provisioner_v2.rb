@@ -55,9 +55,8 @@ module VCAP::Services::Base::ProvisionerV2
         next
       end
 
-      old_handle = instance_handle[instance_id]
       handle = instance_handle.deep_dup
-      new_handle = {
+      @service_instances[instance_id] = {
         :credentials   => handle['credentials'],
         # NOTE on gateway we have have 'configuration' field in instance handle in replacement
         # of the 'gateway_data' field as in ccdb handle, this is for a easy management/translation
@@ -65,15 +64,7 @@ module VCAP::Services::Base::ProvisionerV2
         :configuration => handle['gateway_data'],
         :gateway_name  => handle['credentials']['name'],
       }
-      @service_instances[instance_id] = new_handle
-      after_update_instance_handle(old_handle, new_handle)
-      new_handle
     end
-  end
-
-  # default hook for update instance handle
-  def after_update_instance_handle(old_handle, new_handle)
-    true
   end
 
   def update_binding_handles(binding_handles)
@@ -179,12 +170,6 @@ module VCAP::Services::Base::ProvisionerV2
       :configuration => entity[:configuration],
       :gateway_name  => entity[:service_id],
     }
-    after_add_instance_handle(entity)
-  end
-
-  # default hook
-  def after_add_instance_handle(entity)
-    true
   end
 
   def add_binding_handle(entity)
@@ -201,12 +186,6 @@ module VCAP::Services::Base::ProvisionerV2
 
   def delete_instance_handle(instance_handle)
     @service_instances.delete(instance_handle[:credentials]["name"])
-    after_delete_instance_handle(instance_handle)
-  end
-
-  #default hook
-  def after_delete_instance_handle(instance_handle)
-    true
   end
 
   def delete_binding_handle(binding_handle)
