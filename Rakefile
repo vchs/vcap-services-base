@@ -5,8 +5,12 @@ Bundler.require(:default, :test)
 require 'rspec/core/rake_task'
 require 'ci/reporter/rake/rspec'
 
-RSpec::Core::RakeTask.new do |t| # define 'spec' task
+RSpec::Core::RakeTask.new(:spec) do |t| # define 'spec' task
   t.pattern = "spec/unit_test/*_spec.rb"
+end
+
+RSpec::Core::RakeTask.new(:all_spec) do |t|
+  t.pattern = "spec/*_test/*_spec.rb"
 end
 task "default" => "spec"
 
