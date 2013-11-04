@@ -47,6 +47,7 @@ module VCAP
           NODE_OPERATION_TIMEOUT = [30502, HTTP_INTERNAL, "Node operation timeout"]
           SERVICE_START_TIMEOUT = [30503, HTTP_INTERNAL, "Service start timeout"]
           WARDEN_RUN_COMMAND_FAILURE = [30504, HTTP_INTERNAL, "Failed to run command %s in warden container %s, exit status: %d, stdout: %s, stderr: %s"]
+          PORT_IN_USE = [30505, HTTP_INTERNAL, "The specific port %s is in use"]
 
           # 30600 - 30699  503 Service Unavailable
           SERVICE_UNAVAILABLE = [30600, HTTP_SERVICE_UNAVAIL, 'Service unavailable']
