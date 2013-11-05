@@ -2,8 +2,6 @@
 require 'helper/nats_server_helper'
 require "helper/spec_helper"
 
-include VCAP::Services::Base::Error
-
 describe "Service node utilities test" do
   before :all do
     @instances_num = 10
@@ -53,10 +51,12 @@ describe "Service node utilities test" do
   end
 
   it "should raise error if port is in use" do
+    include VCAP::Services::Base::Error
+
     @test.init_ports([10000, 10001])
     @test.new_port(10000)
     expect { @test.new_port(10000) }.to raise_error(
-      ServiceError, /port.*in use/)
+      VCAP::Services::Base::Error::ServiceError, /port.*in use/)
   end
 
   it "should raise exception when recycle a free port" do

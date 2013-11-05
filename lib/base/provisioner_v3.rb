@@ -5,6 +5,7 @@ require 'base/provisioner_v2'
 module VCAP::Services::Base::ProvisionerV3
   include VCAP::Services::Base::ProvisionerV2
   include VCAP::Services::Internal
+  include VCAP::Services::Base::Error
   include Before
 
   def update_instance_handles(instance_handles)
