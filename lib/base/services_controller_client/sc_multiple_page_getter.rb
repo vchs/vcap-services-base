@@ -32,6 +32,7 @@ module VCAP::Services::ServicesControllerClient
               :unique_id   => plan_entity["id"],
               :name        => plan_entity["name"],
               :description => plan_entity["description"],
+              :active      => plan_entity["active"],
 
               :free   => plan_properties["free"],
               :extra  => plan_properties["extra"],
