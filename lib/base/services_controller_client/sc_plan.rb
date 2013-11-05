@@ -6,6 +6,7 @@ module VCAP::Services::ServicesControllerClient
 
     def initialize(opts)
       super(opts)
+      @active = opts[:active] || false
     end
 
     def to_hash
@@ -19,6 +20,7 @@ module VCAP::Services::ServicesControllerClient
           'id' => @unique_id,
           'name' => @name,
           'description' => @description,
+          'active' => @active,
           'version' => "1", # TODO: Is this really needed
           'properties' => properties.to_json
       }

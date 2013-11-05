@@ -103,6 +103,7 @@ module VCAP::Services::ServicesControllerClient
                        'free' => {
                            description: new_plan_description,
                            free: true,
+                           active: true,
                            extra: nil,
                            unique_id: unique_plan_id,
                        },
@@ -165,6 +166,7 @@ module VCAP::Services::ServicesControllerClient
                           'id' => unique_plan_id,
                           'service_id' => unique_service_id,
                           'name' => 'free',
+                          'active' => true,
                           'version' => "1",
                           'description' => old_plan_description,
                           'properties' => "{\"free\":true,\"extra\":null,\"public\":true}"
@@ -215,6 +217,7 @@ module VCAP::Services::ServicesControllerClient
                        'free' => {
                            description: 'description',
                            free: true,
+                           active: true,
                            extra: free_plan_extra_new,
                            unique_id: unique_plan_id,
                        },
@@ -279,6 +282,7 @@ module VCAP::Services::ServicesControllerClient
                           'id' => unique_plan_id,
                           'service_id' => unique_service_id,
                           'name' => 'free',
+                          'active' => true,
                           'version' => "1",
                           'description' => "description",
                           'properties' => "{\"free\":true,\"extra\":null,\"public\":true}"
@@ -329,6 +333,7 @@ module VCAP::Services::ServicesControllerClient
                        'free' => {
                            description: 'description',
                            free: true,
+                           active: true,
                            extra: free_plan_extra_new,
                            unique_id: unique_plan_id,
                        },
@@ -412,6 +417,7 @@ module VCAP::Services::ServicesControllerClient
                           'id' => unique_plan_id,
                           'service_id' => unique_service_id,
                           'name' => 'free',
+                          'active' => true,
                           'version' => "1",
                           'description' => "description",
                           'properties' => "{\"free\":true,\"extra\":null,\"public\":true}"
@@ -437,6 +443,7 @@ module VCAP::Services::ServicesControllerClient
                       'entity' => {
                           'id' => unique_plan_id,
                           'service_id' => unique_service_id,
+                          'active' => true,
                           'name' => 'free',
                           'version' => "1",
                           'description' => "description",
