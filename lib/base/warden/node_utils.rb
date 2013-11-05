@@ -8,6 +8,7 @@ module VCAP
 end
 
 module VCAP::Services::Base::Warden::NodeUtils
+  include VCAP::Services::Base::Error
 
   attr_accessor :m_interval, :m_actions
 
