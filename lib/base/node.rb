@@ -27,6 +27,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @disabled_file = options[:disabled_file]
     DataMapper::initialize_lock_file(options[:database_lock_file]) if options[:database_lock_file]
 
+    @setup_nats_for_custom_operations = options[:setup_nats_for_custom_operations] || false
+
     # A default supported version
     # *NOTE: All services *MUST* override this to provide the actual supported versions
     @supported_versions = options[:supported_versions] || []
@@ -57,6 +59,46 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       eval %[@node_nats.subscribe("#{service_name}.#{op}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
 
+    if @setup_nats_for_custom_operations
+      @logger.info("Subscribing to: #{service_name}.perform.#{@node_id} for performing custom operations")
+
+      @node_nats.subscribe("#{service_name}.perform.#{@node_id}") { |msg, reply|
+        EM.defer {
+          @logger.debug("#{service_description}: Perform request: #{msg}")
+          begin
+            req = VCAP::Services::Internal::PerformOperationRequest.decode(msg)
+
+            operation = req.args.delete("operation") { |k|
+              raise "Missing operation name"
+            }
+
+            raise "Unsupported operation: #{operation}" unless self.respond_to?(operation, true)
+
+            result = 0
+            code = ""
+            props = {}
+            body = {}
+
+            code, props, body = self.send(operation, req.args)
+          rescue => e
+            @logger.error("Failed to perform custom operation due to: #{e.inspect}")
+            result = 1
+            code = "failed"
+            props = {}
+            body = {:msg => e.message}
+          end
+
+          perform_response = VCAP::Services::Internal::PerformOperationResponse.new({
+            :result => result,
+            :code => code,
+            :properties => props,
+            :body => body
+          })
+          publish(reply, perform_response.encode)
+        }
+      }
+    end
+
     pre_send_announcement
     send_node_announcement
     EM.add_periodic_timer(30) { send_node_announcement }
@@ -84,7 +126,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     response = ProvisionResponse.new
     rollback = lambda do |res|
       @logger.error("#{service_description}: Provision takes too long. Rollback for #{res.inspect}")
-      @capacity_lock.synchronize{ @capacity += capacity_unit } if unprovision(res.credentials["name"], [])
+      @capacity_lock.synchronize { @capacity += capacity_unit } if unprovision(res.credentials["name"], [])
     end
 
     timing_exec(@op_time_limit, rollback) do
@@ -96,7 +138,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       credential = provision(plan, credentials, version)
       credential['node_id'] = @node_id
       response.credentials = credential
-      @capacity_lock.synchronize{ @capacity -= capacity_unit }
+      @capacity_lock.synchronize { @capacity -= capacity_unit }
       @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
       send_instances_heartbeat(credential[:name])
       response
@@ -111,12 +153,12 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Unprovision request: #{msg}.")
     response = SimpleResponse.new
     unprovision_req = UnprovisionRequest.decode(msg)
-    name     = unprovision_req.name
+    name = unprovision_req.name
     bindings = unprovision_req.bindings
     result = unprovision(name, bindings)
     if result
       publish(reply, encode_success(response))
-      @capacity_lock.synchronize{ @capacity += capacity_unit }
+      @capacity_lock.synchronize { @capacity += capacity_unit }
     else
       publish(reply, encode_failure(response))
     end
@@ -135,7 +177,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
     timing_exec(@op_time_limit, rollback) do
       bind_message = BindRequest.decode(msg)
-      name      = bind_message.name
+      name = bind_message.name
       bind_opts = bind_message.bind_opts
       credentials = bind_message.credentials
       response.credentials = bind(name, bind_opts, credentials)
@@ -256,7 +298,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     binding_creds_hash = get_all_bindings_with_option(binding_handles)
     result = update_instance(prov_cred, binding_creds_hash)
     # Need decrease the capacity in destination node when finish migration
-    @capacity_lock.synchronize{ @capacity -= capacity_unit }
+    @capacity_lock.synchronize { @capacity -= capacity_unit }
     prov_cred, binding_creds_hash = result
     # Update node_id in provision credentials
     prov_cred["node_id"] = @node_id
@@ -307,18 +349,18 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   end
 
   def on_purge_orphan(msg, reply)
-    @logger.debug("#{service_description}: Request to purge orphan" )
+    @logger.debug("#{service_description}: Request to purge orphan")
     request = PurgeOrphanRequest.decode(msg)
-    purge_orphan(request.orphan_ins_list,request.orphan_binding_list)
+    purge_orphan(request.orphan_ins_list, request.orphan_binding_list)
   rescue => e
     @logger.warn("Exception at on_purge_orphan #{e}")
   end
 
-  def purge_orphan(oi_list,ob_list)
+  def purge_orphan(oi_list, ob_list)
     oi_list.each do |ins|
       begin
         @logger.debug("Unprovision orphan instance #{ins}")
-        @capacity_lock.synchronize{ @capacity += capacity_unit } if unprovision(ins,[])
+        @capacity_lock.synchronize { @capacity += capacity_unit } if unprovision(ins, [])
       rescue => e
         @logger.debug("Error on purge orphan instance #{ins}: #{e}")
       end
@@ -341,10 +383,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     states = instances_health_details(given_instance_list)
     return if states.empty?
 
-    hbs = { :node_type => service_name,
-            :node_id => @node_id,
-            :node_ip => get_host,
-            :instances => states }
+    hbs = {:node_type => service_name,
+           :node_id => @node_id,
+           :node_ip => get_host,
+           :instances => states}
     publish("svc.heartbeat", Yajl::Encoder.encode(hbs))
     nil
   end
@@ -399,8 +441,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     binding_creds_hash = {}
     handles.each do |handle|
       value = {
-        "credentials" => handle["credentials"],
-        "binding_options" => nil
+          "credentials" => handle["credentials"],
+          "binding_options" => nil
       }
       value["binding_options"] = handle["configuration"]["data"]["binding_options"] if handle["configuration"].has_key?("data")
       binding_creds_hash[handle["service_id"]] = value
@@ -503,5 +545,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   # <action>_instance(prov_credential, binding_credentials)  -->  true for success and nil for fail
   abstract :disable_instance, :dump_instance, :import_instance, :enable_instance, :update_instance
+
+  # perform(PerformCustomResourceOperationRequest)
+  abstract :perform
 
 end

@@ -103,6 +103,13 @@ class VCAP::Services::Base::Gateway
 
       opts = @config.dup
       opts[:provisioner] = sp
+
+      if custom_resource_manager_class.nil?
+        opts[:custom_resource_manager] = nil
+      else
+        opts[:custom_resource_manager] = custom_resource_manager_class.new(opts)
+      end
+
       sg = async_gateway_class.new(opts)
 
       server = Thin::Server.new(@config[:host], @config[:port], sg)
@@ -145,5 +152,9 @@ class VCAP::Services::Base::Gateway
 
   def additional_options
     {}
+  end
+
+  def custom_resource_manager_class
+    nil
   end
 end
