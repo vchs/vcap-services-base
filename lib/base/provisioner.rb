@@ -28,7 +28,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @snapshot_client ||= VCAP::Services::Base::SnapshotV2::SnapshotClient.new(options.fetch(:snapshot_db))
   end
 
-  attr_reader :options
+  attr_reader :options, :node_nats
 
   def initialize(options)
     super(options)
