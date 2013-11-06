@@ -1,6 +1,7 @@
 # Copyright (c) 2009-2011 VMware, Inc.
 require 'base_async_gateway'
 require 'gateway_service_catalog'
+require 'vcap_services_messages/service_message'
 
 $:.unshift(File.dirname(__FILE__))
 
@@ -35,6 +36,8 @@ module VCAP::Services
       @handle_fetched = opts[:handle_fetched] || false
       @fetching_handles = false
       @version_aliases = service[:version_aliases] || {}
+
+      @custom_resource_manager = opts[:custom_resource_manager]
 
       opts[:gateway_name] ||= "Service Gateway"
 
@@ -124,6 +127,68 @@ module VCAP::Services
       end
     end
 
+    ########## Custom Operations Handlers ############
+
+    # Create custom resource
+    post '/gateway/v1/resources' do
+      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+
+      unless @custom_resource_manager
+        error_msg = "No custom resource manager defined"
+        abort_request(error_msg)
+      end
+
+      @custom_resource_manager.invoke(req.operation, req.args, nil) do |msg|
+        async_reply(msg)
+      end
+      async_mode
+    end
+
+    # Read custom resource
+    get '/gateway/v1/resources/:resource_id' do
+      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+
+      unless @custom_resource_manager
+        error_msg = "No custom resource manager defined"
+        abort_request(error_msg)
+      end
+
+      @custom_resource_manager.invoke(req.operation, req.args, params['resource_id']) do |msg|
+        async_reply(msg)
+      end
+      async_mode
+    end
+
+    # Update custom resource
+    put '/gateway/v1/resources/:resource_id' do
+      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+
+      unless @custom_resource_manager
+        error_msg = "No custom resource manager defined"
+        abort_request(error_msg)
+      end
+
+      @custom_resource_manager.invoke(req.operation, req.args, params['resource_id']) do |msg|
+        async_reply(msg)
+      end
+      async_mode
+    end
+
+    # Delete custom resource
+    delete '/gateway/v1/resources/:resource_id' do
+      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+
+      unless @custom_resource_manager
+        error_msg = "No custom resource manager defined"
+        abort_request(error_msg)
+      end
+
+      @custom_resource_manager.invoke(req.operation, req.args, params['resource_id']) do |msg|
+        async_reply(msg)
+      end
+      async_mode
+    end
+
     #################### Handlers ####################
 
     # Provisions an instance of the service
@@ -154,7 +219,7 @@ module VCAP::Services
     delete '/gateway/v1/configurations/:service_id' do
       logger.debug("Unprovision request for service_id=#{params['service_id']}")
 
-      @provisioner.unprovision_service(params['service_id']) do |msg|
+      @provisioner.unprovisiond_service(params['service_id']) do |msg|
         if msg['success']
           async_reply
         else

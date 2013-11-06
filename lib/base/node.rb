@@ -50,6 +50,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
     %w[provision unprovision bind unbind restore disable_instance
       enable_instance import_instance update_instance cleanupnfs_instance purge_orphan
+      perform
     ].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
@@ -77,6 +78,37 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       rollback.call(response) if rollback
       raise ServiceError::new(ServiceError::NODE_OPERATION_TIMEOUT)
     end
+  end
+
+  def on_perform(msg, reply)
+    @logger.debug("#{service_description}: Perform request: #{msg}")
+    perform_req = VCAP::Services::Internal::PerformOperationRequest.decode(msg)
+
+    raise EchoError.new(EchoError::ECHO_UNKNOWN_OPERATION, perform_req.operation) unless self.respond_to?(perform_req.operation, true)
+
+    result = 0
+    code = ""
+    props = {}
+    body = {}
+
+    begin
+      code, props, body = self.send(perform_req.operation, perform_req.args)
+    rescue => e
+      @logger.error("Exception at on_perform #{e}")
+      result = 1
+      code = "failed"
+      props = {}
+      body = {:msg => e.message}
+    end
+
+    perform_response = VCAP::Services::Internal::PerformOperationResponse.new({
+      :result => result,
+      :code => code,
+      :properties => props,
+      :body => body
+    })
+
+    publish(reply, perform_response.encode)
   end
 
   def on_provision(msg, reply)
@@ -503,5 +535,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   # <action>_instance(prov_credential, binding_credentials)  -->  true for success and nil for fail
   abstract :disable_instance, :dump_instance, :import_instance, :enable_instance, :update_instance
+
+  # perform(PerformCustomResourceOperationRequest)
+  abstract :perform
 
 end
