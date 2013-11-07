@@ -342,9 +342,10 @@ module VCAP::Services::Base::ProvisionerV3
     @logger.warn("Failed to get snapshot_metadata #{e}.")
   end
 
-  def create_backup(service_id, opts = {}, &blk)
+  def create_backup(service_id, backup_id, opts = {}, &blk)
     @logger.debug("Create backup job for service_id=#{service_id}")
     job_id = create_backup_job.create(:service_id => service_id,
+                                      :backup_id  => backup_id,
                                       :node_id    => find_backup_peer(service_id),
                                       :metadata   => backup_metadata(service_id).merge(opts)
                                      )
@@ -352,7 +353,9 @@ module VCAP::Services::Base::ProvisionerV3
     @logger.info("CreateBackupJob created: #{job.inspect}")
     blk.call(success(job))
   rescue => e
-    handle_error(e, &blk)
+    @logger.warn("CreateBackupJob failed: #{e}")
+    @logger.warn(e)
+    blk.call(failure(e))
   end
 
   def user_triggered_options(params)

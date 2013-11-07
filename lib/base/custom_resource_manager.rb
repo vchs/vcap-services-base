@@ -1,4 +1,5 @@
 require 'base/service_error'
+require 'base/http_handler'
 
 class VCAP::Services::CustomResourceManager
 
@@ -6,6 +7,7 @@ class VCAP::Services::CustomResourceManager
     @logger = opts[:logger]
     @provisioner = opts[:provisioner]
     @node_timeout = opts[:node_timeout]
+    @http_handler = HTTPHandler.new(opts)
     @node_nats = @provisioner.node_nats  # Used if gateway wishes to communicate over nats for custom operations
   end
 
@@ -23,6 +25,7 @@ class VCAP::Services::CustomResourceManager
   end
 
   def update_resource_properties(url, properties)
+    properties = Yajl::Encoder.encode(properties)
     @http_handler.cc_http_request(:uri => url,
                                   :method => "put",
                                   :body => Yajl::Encoder.encode({ "properties" => properties})) do |http|
@@ -30,12 +33,16 @@ class VCAP::Services::CustomResourceManager
         if (200..299) === http.response_header.status
           @logger.info("CustomResourceManager: Successfully updated resource properties: #{JSON.parse(http.response)}")
         else
-          logger.error("CustomResourceManager:: Failed to update resource properties - status=#{http.response_header.status}")
+          @logger.error("CustomResourceManager:: Failed to update resource properties - status=#{http.response_header.status}")
         end
       else
-        logger.error("CustomResourceManager:: Failed to update resource properties: #{http.error}")
+        @logger.error("CustomResourceManager:: Failed to update resource properties: #{http.error}")
       end
     end
   end
 
+   def required_options(args, *fields)
+     missing_opts = fields.select{|field| !args.has_key? field.to_s}
+     raise ArgumentError, "Missing #{missing_opts.join(', ')} in args: #{args.inspect}" unless missing_opts.empty?
+   end
 end

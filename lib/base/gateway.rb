@@ -108,6 +108,7 @@ class VCAP::Services::Base::Gateway
         opts[:custom_resource_manager] = nil
       else
         opts[:custom_resource_manager] = custom_resource_manager_class.new(opts)
+        sp.custom_resource_manager = opts[:custom_resource_manager]
       end
 
       sg = async_gateway_class.new(opts)

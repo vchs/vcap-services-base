@@ -15,8 +15,9 @@ describe ProvisionerTests do
       mock_nats = double("test_mock_nats")
       klass.should_receive(:create).with(
         :service_id => "service_id",
-        :node_id => "1",
-        :metadata => {},
+        :backup_id  => "backup_id",
+        :node_id    => "1",
+        :metadata   => {},
       ).and_return(2)
       EM.run do
         provisioner = ProvisionerTests.create_provisioner(options)
@@ -26,7 +27,7 @@ describe ProvisionerTests do
         provisioner.should_receive(:find_backup_peer).and_return("1")
         provisioner.should_receive(:backup_metadata).and_return({})
         provisioner.should_receive(:get_job).and_return({})
-        provisioner.create_backup("service_id") {}
+        provisioner.create_backup("service_id", "backup_id", {}) { |x| }
         EM.next_tick {EM.stop}
       end
     end

@@ -70,23 +70,6 @@ module VCAP::Services::Base::AsyncJob
       err_msg
     end
 
-    def success_response(bid, properties)
-      response = BackupJobResponse.new
-      response.success = true
-      response.backup_id = bid
-      response.status = "completed"
-      response.properties = properties
-      response.encode
-    end
-
-    def failed_response(bid, error_msg)
-      response = BackupJobResponse.new
-      response.success = false
-      response.backup_id = bid
-      response.status = "failed"
-      response.encode
-    end
-
     def send_msg(channel, message, &blk)
       if @config["mbus"]
         EM.run do
@@ -96,7 +79,7 @@ module VCAP::Services::Base::AsyncJob
             timer = EM.add_timer(3) do
               worker_nats.unsubscribe(subscription)
               @logger.error("Acknowledgement timeout for request #{message}")
-              # TODO cleanup work for the backup job
+              # TODO cleanup work for the job
               EM.stop
             end
             subscription = worker_nats.request(channel, message) do |msg|
@@ -106,8 +89,8 @@ module VCAP::Services::Base::AsyncJob
               if res.success
                 @logger.info("Acknowledgement for request #{message} successfully received")
               else
-                @logger.error("Backup Job for #{message} failed between Gateway & Controller. Error: #{res.error}")
-                # TODO cleanup work for the backup job
+                @logger.error("Job for #{message} failed between Gateway & Controller. Error: #{res.error}")
+                # TODO cleanup work for the job
               end
               EM.stop
             end
