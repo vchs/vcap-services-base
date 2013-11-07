@@ -129,6 +129,7 @@ class ProvisionerTests
     attr_reader   :staging_orphan_bindings
     attr_reader   :final_orphan_instances
     attr_reader   :final_orphan_bindings
+    attr_reader   :provision_refs
 
     def initialize(options)
       super(options)

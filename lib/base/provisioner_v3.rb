@@ -236,34 +236,38 @@ module VCAP::Services::Base::ProvisionerV3
           end
 
           provision_failure_callback = Proc.new do
-            peers.each do |node, _|
-              node_id = node["id"]
-              @provision_refs[node_id] -= 1
+            begin
+              blk.call(timeout_fail)
+            ensure
+              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
             end
-            blk.call(timeout_fail)
           end
 
           # Recover gateway status if even health manager failed.
-          timer = EM.add_timer(@node_timeout) {
-            @logger.warn("Provision #{service_id} timeout after after #{@node_timeout} seconds")
-            peers.each do |node, _|
-              node_id = node["id"]
-              @provision_refs[node_id] -= 1
+          timer = EM.add_timer(@node_timeout) do
+            begin
+              @logger.warn("Provision #{service_id} timeout after after #{@node_timeout} seconds")
+              @instance_provision_callbacks.delete service_id.to_sym
+              blk.call(timeout_fail)
+            ensure
+              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
             end
-            @instance_provision_callbacks.delete service_id.to_sym
-            blk.call(timeout_fail)
-          }
+          end
 
           provision_success_callback = Proc.new do |*args|
-            @logger.info("Successfully provision response from HM for #{service_id}")
-            EM.cancel_timer(timer)
-            svc = { configuration:  configuration,
-                    service_id:     service_id,
-                    credentials:    instance_credentials
-            }
-            @logger.debug("Provisioned: #{svc.inspect}")
-            add_instance_handle(svc)
-            blk.call(success(svc))
+            begin
+              @logger.info("Successfully provision response from HM for #{service_id}")
+              EM.cancel_timer(timer)
+              svc = { configuration:  configuration,
+                      service_id:     service_id,
+                      credentials:    instance_credentials
+              }
+              @logger.debug("Provisioned: #{svc.inspect}")
+              add_instance_handle(svc)
+              blk.call(success(svc))
+            ensure
+              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+            end
           end
 
           #register callbacks
@@ -369,6 +373,14 @@ module VCAP::Services::Base::ProvisionerV3
 
   def generate_service_id
     SecureRandom.uuid
+  end
+
+  def each_peer(peers)
+    peers.each do |node, config|
+      creds = config["credentials"]
+      node_id = creds["node_id"]
+      yield node_id, creds
+    end
   end
 
   before [:create_backup], :before_backup_apis

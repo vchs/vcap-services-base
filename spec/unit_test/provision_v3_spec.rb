@@ -71,6 +71,7 @@ describe ProvisionerTests do
         gateway.fire_provision_callback service_id
 
         gateway.got_provision_response.should be_true
+        provisioner.provision_refs["node-1"].should eq(0)
         EM.stop
       end
     end
