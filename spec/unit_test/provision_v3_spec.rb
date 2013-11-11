@@ -268,6 +268,5 @@ describe ProvisionerTests do
         EM.stop
       end
     end
-
   end
 end
