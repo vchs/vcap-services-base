@@ -109,8 +109,8 @@ module VCAP::Services::Base::ProvisionerV3
       }
 
       responsed_peers = 0
-      peers.each do |role, config|
-        creds = config["credentials"]
+      peers.each do |peer|
+        creds = peer["credentials"]
         node_id = creds["node_id"]
         @logger.debug("Unprovisioning peer of #{instance_id} from #{node_id}")
         request = UnprovisionRequest.new
@@ -211,14 +211,22 @@ module VCAP::Services::Base::ProvisionerV3
                                    !best_nodes.find {|n| node_score(n) <= 0} )
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
-          # Subclass should response to generate recipes
+          # Subclass should define generate_recipes and return an instance of
+          # VCAP::Services::Internal::ServiceRecips.
+          # recipes.credentials is the connection string presents to end user. Base code treat
+          # credentials as a opaque string.
+          # recipes.configuration contains any data that need persistent when gateway restart
+          # such as version, plan and peers topology for a given service instance.
           recipes = generate_recipes(service_id, { plan.to_sym => plan_config },version, best_nodes)
-          @logger.info("Provision recipes for #{service_id}: #{recipes}")
-          instance_credentials = recipes["credentials"]
-          configuration = recipes["configuration"]
+          unless recipes.is_a? ServiceRecipes
+            raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
+          end
+          @logger.info("Provision recipes for #{service_id}: #{recipes.inspect}")
+          instance_credentials = recipes.credentials
+          configuration = recipes.configuration
           peers = configuration["peers"]
-          peers.each do |node, config|
-            creds = config["credentials"]
+          peers.each do |peer|
+            creds = peer["credentials"]
             node_id = creds["node_id"]
             prov_req = ProvisionRequest.new
             prov_req.plan = plan
@@ -376,8 +384,8 @@ module VCAP::Services::Base::ProvisionerV3
   end
 
   def each_peer(peers)
-    peers.each do |node, config|
-      creds = config["credentials"]
+    peers.each do |peer|
+      creds = peer["credentials"]
       node_id = creds["node_id"]
       yield node_id, creds
     end

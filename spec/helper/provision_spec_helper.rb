@@ -55,15 +55,7 @@ class ProvisionerTests
           'node_id'=>node_id
          },
         :service_id=>instance_id,
-        :configuration => {
-          "peers" => {
-            "active" => {
-              "credentials" => {
-                "node_id" => node_id,
-              }
-            }
-          }
-        }
+        :configuration => {}
       }
     elsif provisioner.provisioner_version == 'v2' ||
       provisioner.provisioner_version == 'v3'
@@ -74,13 +66,13 @@ class ProvisionerTests
           'node_id' => node_id
         },
         :configuration => {
-          "peers" => {
-            "active" => {
+          "peers" => [
+            {
               "credentials" => {
                 "node_id" => node_id,
-              }
+              },
             }
-          }
+          ]
         }
       }
     end
@@ -172,22 +164,23 @@ class ProvisionerTests
         "service_id" => service_id,
         "version" => version,
         "plan" => plan_config.keys[0].to_s,
-        "peers" => {
-          "active" => {
+        "peers" => [
+          {
             "credentials" => {
               "node_id" => node1["id"],
-            }
-          }
-        }
+            },
+          },
+        ]
       }
       creds = {
         "name" => service_id,
         "node_id" => node1["id"]
       }
-      result = {
+
+      result = VCAP::Services::Internal::ServiceRecipes.new({
         "configuration" => config,
         "credentials" => creds
-      }
+      })
 
       result
     end
