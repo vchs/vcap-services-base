@@ -217,7 +217,7 @@ module VCAP::Services::ServicesControllerClient
                        'free' => {
                            description: 'description',
                            free: true,
-                           active: true,
+                           active: false,
                            extra: free_plan_extra_new,
                            unique_id: unique_plan_id,
                        },
@@ -305,7 +305,9 @@ module VCAP::Services::ServicesControllerClient
       end.should have_been_made
 
       a_request(:put, "http://api.vcap.me/api/v1/service_plans/#{cc_service_plan_guid}").with do |req|
-        JSON.parse(JSON.parse(req.body).fetch('properties')).fetch('extra').should == free_plan_extra_new
+        request = JSON.parse(req.body)
+        JSON.parse(request.fetch('properties')).fetch('extra').should == free_plan_extra_new
+        request.fetch('active').should == false
         true
       end.should have_been_made
 
