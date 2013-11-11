@@ -270,5 +270,46 @@ describe ProvisionerTests do
       end
     end
 
+    it "should support provision service with multiple peers" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      mock_nodes = nil
+      EM.run do
+        mock_nats = double("test_mock_nats")
+        opt = {
+          :peers_number => 3
+        }.merge!(options)
+        provisioner = ProvisionerTests.create_multipeers_provisioner(opt)
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_gateway(provisioner)
+        mock_nodes = {}
+        opt[:peers_number].times do |i|
+          mock_nodes["node_#{i}"] = {
+            "id" => "node_#{i}",
+            "plan" => "free",
+            "available_capacity" => 200,
+            "capacity_unit" => 1,
+            "supported_versions" => ["1.0"],
+            "time" => Time.now.to_i
+          }
+        end
+        provisioner.nodes = mock_nodes
+
+        opt[:peers_number].times do |i|
+          mock_nats.should_receive(:request).with("Test.provision.node_#{i}", an_instance_of(String))
+        end
+
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback service_id
+
+        gateway.got_provision_response.should be_true
+
+        provisioner.provision_refs.keys.size.should eq(opt[:peers_number])
+        provisioner.provision_refs.each {|k,v| v.should eq(0)}
+
+        EM.stop
+      end
+    end
   end
 end
