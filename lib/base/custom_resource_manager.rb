@@ -1,7 +1,10 @@
 require 'base/service_error'
 require 'base/http_handler'
+require 'base/service_error'
 
 class VCAP::Services::CustomResourceManager
+
+  include VCAP::Services::Base::Error
 
   def initialize(opts)
     @logger = opts[:logger]
@@ -17,10 +20,20 @@ class VCAP::Services::CustomResourceManager
     begin
       unless self.respond_to?(method_name)
         @logger.error("CustomResourceManager: #{@klass_name} does not support - #{method_name}")
-        raise "CustomResourceManager: Unsupported Operation: #{method_name}"
+        raise "Unsupported operation: #{method_name}"
       end
 
       self.send(method_name, resource_id, args, blk)
+    rescue => e
+      err_msg = VCAP::Services::Internal::PerformOperationResponse.new(
+          {
+              :result => 1,
+              :code => "failed",
+              :properties => {},
+              :body => { :message => e.message }
+          }
+      ).encode
+      blk.call(err_msg)
     end
   end
 

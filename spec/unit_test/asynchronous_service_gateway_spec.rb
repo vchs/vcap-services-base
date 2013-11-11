@@ -76,6 +76,48 @@ describe AsyncGatewayTests do
     gateway.check_orphan_http_code.should == 500
   end
 
+  it "should raise if custom resource operation was requested by a custom resource manager was not defined" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway; gateway.start }
+      Do.at(2) { gateway.send_create_resource_request }
+      Do.at(3) { cc.stop; gateway.stop; EM.stop }
+    end
+    gateway.create_resource_http_code.should == 500
+  end
+
+  it "should raise if requested custom resource operation is not defined" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway_with_custom_resource_manager; gateway.start }
+      Do.at(2) { gateway.send_update_resource_request }
+      Do.at(3) { cc.stop; gateway.stop; EM.stop }
+    end
+    puts "HTTPCode= #{gateway.update_resource_http_code}, response = #{gateway.response}"
+    gateway.update_resource_http_code.should == 200
+    msg = VCAP::Services::Internal::PerformOperationResponse.decode(gateway.response)
+    msg.result.should == 1
+    msg.code.should == "failed"
+    msg.body.should be_a Hash
+    msg.body["message"].should == "Unsupported operation: update_#{AsyncGatewayTests::MockCustomResourceManager::RESOURCE_NAME}"
+  end
+
+  it "should be able to perform custom operation" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway_with_custom_resource_manager; gateway.start }
+      Do.at(2) { gateway.send_create_resource_request }
+      Do.at(3) { cc.stop; gateway.stop; EM.stop }
+    end
+    gateway.create_resource_http_code.should == 200
+  end
+
   it "should be able to provision" do
     cc = nil
     gateway = nil

@@ -1,4 +1,6 @@
 require 'base/asynchronous_service_gateway'
+require 'base/custom_resource_manager'
+require 'base/service_error'
 
 class AsyncGatewayTests
   CC_PORT = 34512
@@ -7,6 +9,10 @@ class AsyncGatewayTests
 
   def self.create_nice_gateway
     MockGateway.new(true)
+  end
+
+  def self.create_nice_gateway_with_custom_resource_manager
+    MockGateway.new(true, nil, -1, 3, false, true)
   end
 
   def self.create_nice_gateway_with_invalid_cc
@@ -29,7 +35,32 @@ class AsyncGatewayTests
     MockCloudController.new
   end
 
+  class MockCustomResourceManager < VCAP::Services::CustomResourceManager
+
+    RESOURCE_NAME = "foo"
+
+    include VCAP::Services::Base::Error
+
+    attr_accessor :last_request_args
+
+    def initialize(opts)
+      super(opts)
+    end
+
+    def create_foo(resource_id, args = {}, blk)
+      @last_request_args = args
+      @last_request_args[:resource_id] = resource_id
+
+      blk.call(success(args))
+    end
+  end
+
   class MockGateway
+    attr_accessor :create_resource_http_code
+    attr_accessor :update_resource_http_code
+
+    attr_accessor :response
+
     attr_accessor :provision_http_code
     attr_accessor :unprovision_http_code
     attr_accessor :bind_http_code
@@ -45,7 +76,7 @@ class AsyncGatewayTests
 
     attr_reader :service_unique_id, :plan_unique_id, :label
 
-    def initialize(nice, timeout=nil, check_interval=-1, double_check_interval=3, cc_invalid=false)
+    def initialize(nice, timeout=nil, check_interval=-1, double_check_interval=3, cc_invalid=false, create_custom_resource_manager=false)
       @token = '0xdeadbeef'
       @cc_head = {
         'Content-Type'         => 'application/json',
@@ -93,13 +124,24 @@ class AsyncGatewayTests
         :check_orphan_interval => check_interval,
         :double_check_orphan_interval => double_check_interval,
         :logger => logger,
+
       }
       options[:cloud_controller_uri] = "http://invalid_uri" if cc_invalid
+      if create_custom_resource_manager
+        options[:custom_resource_manager] = MockCustomResourceManager.new(options)
+      end
+
       sg = VCAP::Services::AsynchronousServiceGateway.new(options)
       @server = Thin::Server.new('localhost', GW_PORT, sg)
       if @service_timeout
         @server.timeout = [@service_timeout + 1, Thin::Server::DEFAULT_TIMEOUT].max
       end
+
+      @create_resource_http_code = 0
+      @get_resource_http_code = 0
+      @update_resource_http_code = 0
+      @delete_resource_http_code = 0
+
       @provision_http_code = 0
       @unprovision_http_code = 0
       @bind_http_code = 0
@@ -136,6 +178,42 @@ class AsyncGatewayTests
 
     def double_check_orphan_invoked
       @sp.double_check_orphan_invoked
+    end
+
+    def send_create_resource_request(msg_opts={})
+      msg = VCAP::Services::Internal::PerformOperationRequest.new(
+          {
+              :args => {"foo" => "bar"},
+          }.merge(msg_opts)
+      ).encode
+      url = "http://localhost:#{GW_PORT}/gateway/v1/resources/#{MockCustomResourceManager::RESOURCE_NAME}"
+      http = EM::HttpRequest.new(url, :inactivity_timeout => @service_timeout).post(gen_req(msg))
+      http.callback {
+        @create_resource_http_code = http.response_header.status
+        @response = http.response
+      }
+      http.errback {
+        @create_resource_http_code = -1
+        @response = http.response
+      }
+    end
+
+    def send_update_resource_request(msg_opts={})
+      msg = VCAP::Services::Internal::PerformOperationRequest.new(
+          {
+              :args => {"foo" => "bar"},
+          }.merge(msg_opts)
+      ).encode
+      url = "http://localhost:#{GW_PORT}/gateway/v1/resources/#{MockCustomResourceManager::RESOURCE_NAME}/12345"
+      http = EM::HttpRequest.new(url, :inactivity_timeout => @service_timeout).put(gen_req(msg))
+      http.callback {
+        @update_resource_http_code = http.response_header.status
+        @response = http.response
+      }
+      http.errback {
+        @update_resource_http_code = -1
+        @response = http.response
+      }
     end
 
     def send_provision_request(msg_opts={})
@@ -363,6 +441,8 @@ class AsyncGatewayTests
     attr_reader   :check_orphan_invoked
     attr_reader   :double_check_orphan_invoked
 
+    attr_reader :node_nats
+
     def initialize
       @got_provision_request = false
       @got_unprovision_request = false
@@ -375,6 +455,8 @@ class AsyncGatewayTests
       @purge_orphan_invoked = false
       @check_orphan_invoked = false
       @double_check_orphan_invoked = false
+
+      @node_nats = nil
     end
 
     def register_update_handle_callback
