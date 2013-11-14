@@ -1,3 +1,4 @@
+require 'base64'
 require 'fiber'
 require 'nats/client'
 require 'uri'
@@ -20,7 +21,7 @@ module VCAP
 
           @opts = opts
 
-          required_opts = %w(cloud_controller_uri gateway_name logger).map { |o| o.to_sym }
+          required_opts = %w(cloud_controller_uri gateway_name logger auth_key).map { |o| o.to_sym }
 
           missing_opts = required_opts.select { |o| !opts.has_key? o }
           raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
@@ -38,7 +39,11 @@ module VCAP
           @gateway_stats = {}
           @gateway_stats_lock = Mutex.new
           snapshot_and_reset_stats
-          @http_handler = HTTPHandler.new(opts)
+          @http_handler = HTTPHandler.new(
+            opts,
+            lambda{ "Basic #{Base64.encode64(opts[:auth_key])}" }
+          )
+
           @sc_req_hdrs = { 'Content-Type' => 'application/json' }
           @multiple_page_getter = VCAP::Services::ServicesControllerClient::MultiplePageGetter.new(
               @http_handler.method(:cc_http_request),
