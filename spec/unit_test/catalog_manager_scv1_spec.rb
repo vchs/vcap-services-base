@@ -11,6 +11,7 @@ describe VCAP::Services::ServicesControllerClient::SCCatalogManagerV1 do
         :token => 'token',
         :gateway_name => 'test_gw',
         :logger => logger,
+        :auth_key => "a@b.c:abc"
     }
   end
   let(:catalog_manager) { described_class.new(config) }
@@ -20,7 +21,11 @@ describe VCAP::Services::ServicesControllerClient::SCCatalogManagerV1 do
   end
 
   it 'creates a http handler with correct params' do
-    HTTPHandler.should_receive(:new).with(config)
+    HTTPHandler.should_receive(:new).with do | *args |
+      args.size.should == 2
+      args[0].should == config
+      args[1].is_a? Proc
+    end
     catalog_manager
   end
 
