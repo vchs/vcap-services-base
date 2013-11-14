@@ -9,6 +9,7 @@ module VCAP::Services::ServicesControllerClient
           :token => 'token',
           :gateway_name => 'test_gw',
           :logger => make_logger,
+          :auth_key => "a@b.c:abc"
       }
     end
 
