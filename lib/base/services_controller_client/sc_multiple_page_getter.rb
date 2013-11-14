@@ -25,7 +25,13 @@ module VCAP::Services::ServicesControllerClient
           plan_entity = p.fetch('entity')
           plan_metadata = p.fetch('metadata')
 
-          plan_properties = JSON.parse(plan_entity["properties"])
+          plan_properties = {}
+          begin
+            plan_properties = JSON.parse(plan_entity["properties"])
+          rescue Exception => e
+            logger.debug("Failed to parse properties #{plan_entity['properties']}")
+          end
+
           plans << VCAP::Services::ServicesControllerClient::SCPlan.new(
               :guid => plan_metadata["guid"],
 
