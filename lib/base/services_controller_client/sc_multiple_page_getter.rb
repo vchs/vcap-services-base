@@ -25,7 +25,13 @@ module VCAP::Services::ServicesControllerClient
           plan_entity = p.fetch('entity')
           plan_metadata = p.fetch('metadata')
 
-          plan_properties = JSON.parse(plan_entity["properties"])
+          plan_properties = {}
+          begin
+            plan_properties = JSON.parse(plan_entity["properties"])
+          rescue Exception => e
+            logger.debug("Failed to parse properties #{plan_entity['properties']}")
+          end
+
           plans << VCAP::Services::ServicesControllerClient::SCPlan.new(
               :guid => plan_metadata["guid"],
 
@@ -34,9 +40,9 @@ module VCAP::Services::ServicesControllerClient
               :description => plan_entity["description"],
               :active      => plan_entity["active"],
 
-              :free   => plan_properties["free"],
-              :extra  => plan_properties["extra"],
-              :public => plan_properties["public"],
+              :free   => plan_properties["free"] || false,
+              :extra  => plan_properties["extra"] || {},
+              :public => plan_properties["public"] || {},
           )
         end
 
@@ -72,8 +78,8 @@ module VCAP::Services::ServicesControllerClient
                           :need_raise => true) do |http|
           result = nil
           if (200..299) === http.response_header.status
+            logger.debug("SCCM(v1): Response for (#{url}): #{http.response}")
             result = JSON.parse(http.response)
-            logger.debug("SCCM(v1): Response for (#{url}): #{result.inspect}")
           elsif 404 == http.response_header.status
             logger.debug("SCCM(v1): No result")
             return
