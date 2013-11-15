@@ -8,6 +8,10 @@ class ProvisionerTests
     ProvisionerTester.new(BaseTests::Options.default(options))
   end
 
+  def self.create_multipeers_provisioner(options = {})
+    MultiPeerProvisionerTester.new(BaseTests::Options.default(options))
+  end
+
   def self.create_gateway(provisioner, ins_count=1, bind_count=1)
     MockGateway.new(provisioner, ins_count, bind_count)
   end
@@ -55,15 +59,7 @@ class ProvisionerTests
           'node_id'=>node_id
          },
         :service_id=>instance_id,
-        :configuration => {
-          "peers" => {
-            "active" => {
-              "credentials" => {
-                "node_id" => node_id,
-              }
-            }
-          }
-        }
+        :configuration => {}
       }
     elsif provisioner.provisioner_version == 'v2' ||
       provisioner.provisioner_version == 'v3'
@@ -74,13 +70,13 @@ class ProvisionerTests
           'node_id' => node_id
         },
         :configuration => {
-          "peers" => {
-            "active" => {
+          "peers" => [
+            {
               "credentials" => {
                 "node_id" => node_id,
-              }
+              },
             }
-          }
+          ]
         }
       }
     end
@@ -172,22 +168,60 @@ class ProvisionerTests
         "service_id" => service_id,
         "version" => version,
         "plan" => plan_config.keys[0].to_s,
-        "peers" => {
-          "active" => {
+        "peers" => [
+          {
             "credentials" => {
               "node_id" => node1["id"],
-            }
-          }
-        }
+            },
+          },
+        ]
       }
       creds = {
         "name" => service_id,
         "node_id" => node1["id"]
       }
-      result = {
+
+      result = VCAP::Services::Internal::ServiceRecipes.new({
         "configuration" => config,
         "credentials" => creds
+      })
+
+      result
+    end
+  end
+
+  class MultiPeerProvisionerTester < ProvisionerTester
+    attr_accessor :peers_number
+
+    def initialize(opts)
+      super(opts)
+      @peers_number = opts[:peers_number] || 1
+    end
+
+    def generate_recipes(service_id, plan_config, version, best_nodes)
+      node1 = best_nodes[0]
+      config = {
+        "service_id" => service_id,
+        "version" => version,
+        "plan" => plan_config.keys[0].to_s,
+        "peers" => peers_number.times.map do |i|
+          {
+            "credentials" => {
+              "node_id" => "node_#{i}",
+            },
+            "role" => "peer"
+          }
+        end
       }
+      creds = {
+        "name" => service_id,
+        "node_id" => node1["id"]
+      }
+
+      result = VCAP::Services::Internal::ServiceRecipes.new({
+        "configuration" => config,
+        "credentials" => creds
+      })
 
       result
     end
