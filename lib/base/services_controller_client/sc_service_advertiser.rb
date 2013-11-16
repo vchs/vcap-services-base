@@ -8,6 +8,7 @@ module VCAP::Services::ServicesControllerClient
       @http_handler = options.fetch(:http_handler)
       @logger = options.fetch(:logger)
       @active = options.fetch(:active, true)
+      @token = options.fetch(:token)
       @offering_uri = "/api/v1/services"
       @service_plans_uri = "/api/v1/service_plans"
       update_guid
@@ -80,6 +81,7 @@ module VCAP::Services::ServicesControllerClient
       logger.debug("SCCM(v1): #{update ? "Update" : "Advertise"} service offering #{offering.inspect} to service controller: #{uri}")
 
       offerings_hash = offering.to_hash
+      offerings_hash["token"] = @token
       method = update ? "put" : "post"
       if method == 'put'
         offerings_hash.delete('unique_id')
