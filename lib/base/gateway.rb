@@ -136,7 +136,7 @@ class VCAP::Services::Base::Gateway
       raise "Token missing" unless token
       raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))
       config[:token] = token.to_s
-    else
+    elsif config[:cc_api_version] == "v2"
       service_auth_tokens = config[:service_auth_tokens]
       raise "Service auth token missing" unless service_auth_tokens
       raise "Token must be hash of the form: label_provider => token" unless service_auth_tokens.is_a?(Hash)
@@ -146,6 +146,9 @@ class VCAP::Services::Base::Gateway
 
       # Used by legacy services for validating incoming request (and temporarily for handle fetch/update v1 api)
       config[:token] = service_auth_tokens.values[0].to_s # For legacy services
+    elsif config[:cc_api_version] == "scv1"
+      token = config[:token] || SecureRandom.uuid #Auto-generate a security token if one is not specified in config
+      raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))
     end
 
     config
