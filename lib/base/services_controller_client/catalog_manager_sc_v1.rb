@@ -21,7 +21,7 @@ module VCAP
 
           @opts = opts
 
-          required_opts = %w(cloud_controller_uri gateway_name logger auth_key).map { |o| o.to_sym }
+          required_opts = %w(cloud_controller_uri gateway_name logger auth_key token).map { |o| o.to_sym }
 
           missing_opts = required_opts.select { |o| !opts.has_key? o }
           raise ArgumentError, "Missing options: #{missing_opts.join(', ')}" unless missing_opts.empty?
@@ -35,6 +35,7 @@ module VCAP
           @handle_guid = {}
 
           @logger = opts[:logger]
+          @token = opts[:token]
 
           @gateway_stats = {}
           @gateway_stats_lock = Mutex.new
@@ -253,7 +254,8 @@ module VCAP
               catalog_in_ccdb: catalog_in_ccdb,
               http_handler: @http_handler,
               logger: logger,
-              active: active
+              active: active,
+              token: @token
           )
           service_advertiser.advertise_services
 

@@ -131,7 +131,7 @@ class VCAP::Services::Base::Gateway
 
     config[:cc_api_version] ||= 'v1'
 
-    if config[:cc_api_version] == "v1"
+    if config[:cc_api_version] == "v1" || config[:cc_api_version] == "scv1"
       token = config[:token]
       raise "Token missing" unless token
       raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))
