@@ -147,8 +147,8 @@ class VCAP::Services::Base::Gateway
       # Used by legacy services for validating incoming request (and temporarily for handle fetch/update v1 api)
       config[:token] = service_auth_tokens.values[0].to_s # For legacy services
     elsif config[:cc_api_version] == "scv1"
-      token = config[:token] || SecureRandom.uuid #Auto-generate a security token if one is not specified in config
-      raise "Token must be a String or Int, #{token.class} given" unless (token.is_a?(Integer) || token.is_a?(String))
+      config[:token] = config[:token] || SecureRandom.uuid #Auto-generate a security token if one is not specified in config
+      raise "Token must be a String or Int, #{config[:token].class} given" unless (config[:token].is_a?(Integer) || config[:token].is_a?(String))
     end
 
     config
