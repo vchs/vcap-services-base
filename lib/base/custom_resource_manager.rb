@@ -10,7 +10,8 @@ class VCAP::Services::CustomResourceManager
     @logger = opts[:logger]
     @provisioner = opts[:provisioner]
     @node_timeout = opts[:node_timeout]
-    @http_handler = HTTPHandler.new(opts)
+    blk = lambda { "Basic #{Base64.strict_encode64(opts[:auth_key])}" }
+    @http_handler = HTTPHandler.new(opts, blk)
     @node_nats = @provisioner.node_nats  # Used if gateway wishes to communicate over nats for custom operations
   end
 
