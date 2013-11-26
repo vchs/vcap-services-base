@@ -202,10 +202,15 @@ module VCAP::Services
     # Provisions an instance of the service
     #
     post '/gateway/v1/configurations' do
-      req = VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
+      if @cc_api_version == "scv1"
+        req = VCAP::Services::Internal::GatewayProvisionRequest.decode(request_body)
+      else
+        req = VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
+      end
+
       @logger.debug("Provision request for unique_id=#{req.unique_id}")
 
-      plan_unique_ids = service.fetch(:plans).values.map {|p| p.fetch(:unique_id) }
+      plan_unique_ids = service.fetch(:plans).values.map { |p| p.fetch(:unique_id) }
 
       unless plan_unique_ids.include?(req.unique_id)
         error_msg = ServiceError.new(ServiceError::UNKNOWN_PLAN_UNIQUE_ID).to_hash
@@ -214,7 +219,11 @@ module VCAP::Services
 
       @provisioner.provision_service(req) do |msg|
         if msg['success']
-          async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
+          if @cc_api_version == "scv1"
+            async_reply(VCAP::Services::Internal::GatewayProvisionResponse.new(msg['response']).encode)
+          else
+            async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
+          end
         else
           async_reply_error(msg['response'])
         end
@@ -553,14 +562,14 @@ module VCAP::Services
       def update_service_handle(handle, &cb)
         f = Fiber.new do
           @catalog_manager.update_handle_in_cc(
-            service[:label],
-            handle,
-            lambda {
-              # Update local array in provisioner
-              @provisioner.update_handles([handle])
-              cb.call(true) if cb
-            },
-            lambda { cb.call(false) if cb }
+              service[:label],
+              handle,
+              lambda {
+                # Update local array in provisioner
+                @provisioner.update_handles([handle])
+                cb.call(true) if cb
+              },
+              lambda { cb.call(false) if cb }
           )
         end
         f.resume
@@ -569,18 +578,18 @@ module VCAP::Services
       # Lets the cloud controller know we're alive and where it can find us
       def send_heartbeat
         @catalog_manager.update_catalog(
-          true,
-          lambda { return get_current_catalog },
-          nil
+            true,
+            lambda { return get_current_catalog },
+            nil
         )
       end
 
       # Lets the cloud controller know that we're going away
       def send_deactivation_notice(stop_event_loop=true)
         @catalog_manager.update_catalog(
-          false,
-          lambda { return get_current_catalog },
-          lambda { event_machine.stop if stop_event_loop }
+            false,
+            lambda { return get_current_catalog },
+            lambda { event_machine.stop if stop_event_loop }
         )
       end
 

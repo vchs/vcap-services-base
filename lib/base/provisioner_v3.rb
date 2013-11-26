@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2013 VMware, Inc.
 require 'base/provisioner_v2'
+require 'vcap_services_messages/constants'
 
 module VCAP::Services::Base::ProvisionerV3
   include VCAP::Services::Base::ProvisionerV2
   include VCAP::Services::Internal
   include VCAP::Services::Base::Error
   include Before
+
+  PA = VCAP::Services::Internal::ProvisionArguments
 
   def update_instance_handles(instance_handles)
     instance_handles.each do |instance_id, instance_handle|
@@ -189,6 +192,10 @@ module VCAP::Services::Base::ProvisionerV3
     plan = request.plan || "free"
     version = request.version
 
+    # TODO: Perform Restore (somehow??)
+    restore_from_url = request.properties[PA::RESTORE_FROM_URL] || nil
+    @logger.debug("Restoring previous instance from: #{restore_from_url}") unless restore_from_url.nil?
+
     plan_nodes = @nodes.select{ |_, node| node["plan"] == plan}.values
 
     @logger.debug("[#{service_description}] Picking version nodes from the following #{plan_nodes.count} \'#{plan}\' plan nodes: #{plan_nodes}")
@@ -217,7 +224,7 @@ module VCAP::Services::Base::ProvisionerV3
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config },version, best_nodes)
+          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
@@ -266,12 +273,23 @@ module VCAP::Services::Base::ProvisionerV3
             begin
               @logger.info("Successfully provision response from HM for #{service_id}")
               EM.cancel_timer(timer)
+              provision_response_status = restore_from_url.nil?  ?
+                  VCAP::Services::Internal::ServiceInstanceStatus::READY :
+                  VCAP::Services::Internal::ServiceInstanceStatus::RESTORING
+
               svc = { configuration:  configuration,
                       service_id:     service_id,
-                      credentials:    instance_credentials
+                      credentials:    instance_credentials,
+                      status:         provision_response_status
               }
               @logger.debug("Provisioned: #{svc.inspect}")
               add_instance_handle(svc)
+
+              unless restore_from_url.nil?
+                # TODO: setup an asynchronous restore from backup job and return
+                # restore_from_backup(restore_from_url, service_id, ...)
+              end
+
               blk.call(success(svc))
             ensure
               each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
@@ -361,8 +379,21 @@ module VCAP::Services::Base::ProvisionerV3
     @logger.info("CreateBackupJob created: #{job.inspect}")
     blk.call(success(job))
   rescue => e
-    @logger.warn("CreateBackupJob failed: #{e}")
-    @logger.warn(e)
+    @logger.error("CreateBackupJob failed: #{e}")
+    blk.call(failure(e))
+  end
+
+  # TODO: fill in
+  def restore_from_backup(service_id, backup_url, opts= {}, &blk)
+    @logger.debug("Restoring instance data from backup: #{backup_url} into instance - service_id=#{service_id}")
+
+    job_id = nil # TODO: restore job definition
+
+    job = get_job(job_id)
+    @logger.info("RestoreFromBackupJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue => e
+    @logger.error("RestoreFromBackupJob failed: #{e}")
     blk.call(failure(e))
   end
 
