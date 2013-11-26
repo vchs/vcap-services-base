@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2013 VMware, Inc.
 require 'base/provisioner_v2'
+require 'vcap_services_messages/constants'
 
 module VCAP::Services::Base::ProvisionerV3
   include VCAP::Services::Base::ProvisionerV2
   include VCAP::Services::Internal
   include VCAP::Services::Base::Error
   include Before
+
+  PA = VCAP::Services::Internal::ProvisionArguments
 
   def update_instance_handles(instance_handles)
     instance_handles.each do |instance_id, instance_handle|
@@ -18,12 +21,12 @@ module VCAP::Services::Base::ProvisionerV3
       old_handle = instance_handle[instance_id]
       handle = instance_handle.deep_dup
       new_handle = {
-        :credentials   => handle['credentials'],
-        # NOTE on gateway we have have 'configuration' field in instance handle in replacement
-        # of the 'gateway_data' field as in ccdb handle, this is for a easy management/translation
-        # between gateway v1 and v2 provisioner code
-        :configuration => handle['gateway_data'] || handle['configuration'],
-        :gateway_name  => handle['credentials']['name'],
+          :credentials => handle['credentials'],
+          # NOTE on gateway we have have 'configuration' field in instance handle in replacement
+          # of the 'gateway_data' field as in ccdb handle, this is for a easy management/translation
+          # between gateway v1 and v2 provisioner code
+          :configuration => handle['gateway_data'] || handle['configuration'],
+          :gateway_name => handle['credentials']['name'],
       }
       @service_instances[instance_id] = new_handle
       after_update_instance_handle(old_handle, new_handle)
@@ -38,9 +41,9 @@ module VCAP::Services::Base::ProvisionerV3
 
   def add_instance_handle(entity)
     @service_instances[entity[:service_id]] = {
-      :credentials   => entity[:credentials],
-      :configuration => entity[:configuration],
-      :gateway_name  => entity[:service_id],
+        :credentials => entity[:credentials],
+        :configuration => entity[:configuration],
+        :gateway_name => entity[:service_id],
     }
     after_add_instance_handle(entity)
   end
@@ -81,7 +84,7 @@ module VCAP::Services::Base::ProvisionerV3
     end
 
     # service health manager channels
-    @node_nats.subscribe("#{service_name}.health.ok") {|msg, reply| on_health_ok(msg, reply)}
+    @node_nats.subscribe("#{service_name}.health.ok") { |msg, reply| on_health_ok(msg, reply) }
 
     pre_send_announcement()
     @node_nats.publish("#{service_name}.discover")
@@ -114,7 +117,7 @@ module VCAP::Services::Base::ProvisionerV3
         @logger.debug("Unprovisioning peer of #{instance_id} from #{node_id}")
         request = UnprovisionRequest.new
         request.name = instance_id
-        request.bindings = bindings.map{|h| h[:credentials]}
+        request.bindings = bindings.map { |h| h[:credentials] }
         @logger.debug("Sending unprovision request #{request.inspect}")
         subscriptions << @node_nats.request(
             "#{service_name}.unprovision.#{node_id}", request.encode
@@ -188,14 +191,21 @@ module VCAP::Services::Base::ProvisionerV3
     plan = request.plan || "free"
     version = request.version
 
-    plan_nodes = @nodes.select{ |_, node| node["plan"] == plan}.values
+    # TODO: Perform Restore (somehow??)
+    if request.respond_to?(:properties)
+      backup_id = request.properties[PA::BACKUP_ID] || nil
+      original_service_id = request.properties[PA::ORIGINAL_SERVICE_ID] || nil
+      @logger.debug("Restoring previous instance from backup:#{backup_id} for original instance: #{original_service_id}") unless original_service_id.nil?
+    end
+
+    plan_nodes = @nodes.select { |_, node| node["plan"] == plan }.values
 
     @logger.debug("[#{service_description}] Picking version nodes from the following #{plan_nodes.count} \'#{plan}\' plan nodes: #{plan_nodes}")
     if plan_nodes.count > 0
       plan_config = @plan_mgmt[plan.to_sym]
       allow_over_provisioning = plan_config && plan_config[:allow_over_provisioning] || false
 
-      version_nodes = plan_nodes.select{ |node|
+      version_nodes = plan_nodes.select { |node|
         node["supported_versions"] != nil && node["supported_versions"].include?(version)
       }
       @logger.debug("[#{service_description}] #{version_nodes.count} nodes allow provisioning for version: #{version}")
@@ -206,8 +216,8 @@ module VCAP::Services::Base::ProvisionerV3
         # TODO handles required_peers > version_nodes.size
         best_nodes = version_nodes.sort_by { |node| node_score(node) }[-required_peers..-1]
 
-        if best_nodes.size > 0 && ( allow_over_provisioning ||
-                                   !best_nodes.find {|n| node_score(n) <= 0} )
+        if best_nodes.size > 0 && (allow_over_provisioning ||
+            !best_nodes.find { |n| node_score(n) <= 0 })
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
           # Subclass should define generate_recipes and return an instance of
@@ -216,7 +226,7 @@ module VCAP::Services::Base::ProvisionerV3
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config },version, best_nodes)
+          recipes = generate_recipes(service_id, {plan.to_sym => plan_config}, version, best_nodes)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
@@ -246,7 +256,7 @@ module VCAP::Services::Base::ProvisionerV3
             begin
               blk.call(timeout_fail)
             ensure
-              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+              each_peer(peers) { |node_id, _| @provision_refs[node_id] -= 1 }
             end
           end
 
@@ -257,7 +267,7 @@ module VCAP::Services::Base::ProvisionerV3
               @instance_provision_callbacks.delete service_id.to_sym
               blk.call(timeout_fail)
             ensure
-              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+              each_peer(peers) { |node_id, _| @provision_refs[node_id] -= 1 }
             end
           end
 
@@ -265,23 +275,36 @@ module VCAP::Services::Base::ProvisionerV3
             begin
               @logger.info("Successfully provision response from HM for #{service_id}")
               EM.cancel_timer(timer)
-              svc = { configuration:  configuration,
-                      service_id:     service_id,
-                      credentials:    instance_credentials
+
+              # TODO: Add status as appropriate
+              #provision_response_status = restore_from_url.nil? ?
+              #    VCAP::Services::Internal::ServiceInstanceStatus::READY :
+              #    VCAP::Services::Internal::ServiceInstanceStatus::RESTORING
+
+              svc = {configuration: configuration,
+                     service_id: service_id,
+                     credentials: instance_credentials,
+                     # status: provision_response_status
               }
               @logger.debug("Provisioned: #{svc.inspect}")
               add_instance_handle(svc)
+
+              # TODO: setup an asynchronous restore from backup job and return
+              #unless restore_from_url.nil?
+              #  restore_from_backup(restore_from_url, service_id, ...)
+              #end
+
               blk.call(success(svc))
             ensure
-              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+              each_peer(peers) { |node_id, _| @provision_refs[node_id] -= 1 }
             end
           end
 
           #register callbacks
           @instance_provision_callbacks[service_id.to_sym] = {
-            success:  provision_success_callback,
-            failed:   provision_failure_callback,
-            timeout_timer: timer
+              success: provision_success_callback,
+              failed: provision_failure_callback,
+              timeout_timer: timer
           }
           service_id
         else
@@ -330,9 +353,9 @@ module VCAP::Services::Base::ProvisionerV3
     service_version = instance[:configuration]["version"] || instance[:configuration][:version]
 
     metadata = {
-      :plan => find_service_plan(instance),
-      :provider => service[:provider] || 'core',
-      :service_version => service_version
+        :plan => find_service_plan(instance),
+        :provider => service[:provider] || 'core',
+        :service_version => service_version
     }
     metadata
   rescue => e
@@ -342,16 +365,15 @@ module VCAP::Services::Base::ProvisionerV3
   def create_backup(service_id, backup_id, opts = {}, &blk)
     @logger.debug("Create backup job for service_id=#{service_id}")
     job_id = create_backup_job.create(:service_id => service_id,
-                                      :backup_id  => backup_id,
-                                      :node_id    => find_backup_peer(service_id),
-                                      :metadata   => backup_metadata(service_id).merge(opts)
-                                     )
+                                      :backup_id => backup_id,
+                                      :node_id => find_backup_peer(service_id),
+                                      :metadata => backup_metadata(service_id).merge(opts)
+    )
     job = get_job(job_id)
     @logger.info("CreateBackupJob created: #{job.inspect}")
     blk.call(success(job))
   rescue => e
-    @logger.warn("CreateBackupJob failed: #{e}")
-    @logger.warn(e)
+    @logger.error("CreateBackupJob failed: #{e}")
     blk.call(failure(e))
   end
 

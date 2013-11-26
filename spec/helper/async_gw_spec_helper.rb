@@ -7,12 +7,12 @@ class AsyncGatewayTests
   GW_PORT = 34513
   NODE_TIMEOUT = 5
 
-  def self.create_nice_gateway
-    MockGateway.new(true)
+  def self.create_nice_gateway(cc_api_version = "v1")
+    MockGateway.new(true, nil, -1, 3, false, false, cc_api_version)
   end
 
   def self.create_nice_gateway_with_custom_resource_manager
-    MockGateway.new(true, nil, -1, 3, false, true)
+    MockGateway.new(true, nil, -1, 3, false, true, "scv1")
   end
 
   def self.create_nice_gateway_with_invalid_cc
@@ -71,7 +71,7 @@ class AsyncGatewayTests
 
     attr_reader :service_unique_id, :plan_unique_id, :label
 
-    def initialize(nice, timeout=nil, check_interval=-1, double_check_interval=3, cc_invalid=false, create_custom_resource_manager=false)
+    def initialize(nice, timeout=nil, check_interval=-1, double_check_interval=3, cc_invalid=false, create_custom_resource_manager=false, cc_api_version="v1")
       @token = '0xdeadbeef'
       @cc_head = {
         'Content-Type'         => 'application/json',
@@ -119,6 +119,8 @@ class AsyncGatewayTests
         :check_orphan_interval => check_interval,
         :double_check_orphan_interval => double_check_interval,
         :logger => logger,
+        :cc_api_version => cc_api_version,
+        :auth_key =>"auth_key"
 
       }
       options[:cloud_controller_uri] = "http://invalid_uri" if cc_invalid
