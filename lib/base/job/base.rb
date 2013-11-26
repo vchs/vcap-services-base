@@ -80,6 +80,7 @@ module VCAP::Services::Base::AsyncJob
               worker_nats.unsubscribe(subscription)
               @logger.error("Acknowledgement timeout for request #{message}")
               # TODO cleanup work for the job
+              blk.call
               EM.stop
             end
             subscription = worker_nats.request(channel, message) do |msg|
@@ -91,6 +92,7 @@ module VCAP::Services::Base::AsyncJob
               else
                 @logger.error("Job for #{message} failed between Gateway & Controller. Error: #{res.error}")
                 # TODO cleanup work for the job
+                blk.call
               end
               EM.stop
             end

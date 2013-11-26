@@ -31,7 +31,7 @@ module VCAP::Services::Base::AsyncJob
         mock_nats.should_receive(:request).with(any_args())
 
         logger.should_receive(:error).with(/timeout/)
-        @base_job.send_msg("mysql.backups.create", {})
+        @base_job.send_msg("mysql.backups.create", {}) {}
       end
     end
   end
