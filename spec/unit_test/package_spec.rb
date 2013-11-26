@@ -47,6 +47,7 @@ describe VCAP::Services::Base::AsyncJob::Package do
     temp_file = Tempfile.new("test.zip")
     package = VCAP::Services::Base::AsyncJob::Package.new(temp_file.path)
     package.add_files([
+      assets_path("test_dir"),
       assets_path("test.sql"),
     ])
     package.manifest = {
@@ -63,8 +64,10 @@ describe VCAP::Services::Base::AsyncJob::Package do
 
       # unpack
       package2.unpack(temp_dir)
-      f = "test.sql"
-      files_identical?( assets_path(f), File.join(temp_dir, f)).should == true
+      files = ["test.sql", "test_dir/test.sql"]
+      files.each do |f|
+        files_identical?( assets_path(f), File.join(temp_dir, f)).should == true
+      end
     ensure
       FileUtils.rm_rf temp_dir if temp_dir
     end

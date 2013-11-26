@@ -70,7 +70,7 @@ module VCAP::Services::Base::AsyncJob
       err_msg
     end
 
-    def send_msg(channel, message, &blk)
+    def send_msg(channel, message, &err_callback)
       if @config["mbus"]
         EM.run do
           subscription = nil
@@ -80,6 +80,7 @@ module VCAP::Services::Base::AsyncJob
               worker_nats.unsubscribe(subscription)
               @logger.error("Acknowledgement timeout for request #{message}")
               # TODO cleanup work for the job
+              err_callback.call if err_callback
               EM.stop
             end
             subscription = worker_nats.request(channel, message) do |msg|
@@ -91,6 +92,7 @@ module VCAP::Services::Base::AsyncJob
               else
                 @logger.error("Job for #{message} failed between Gateway & Controller. Error: #{res.error}")
                 # TODO cleanup work for the job
+                err_callback.call if err_callback
               end
               EM.stop
             end

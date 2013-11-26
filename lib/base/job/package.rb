@@ -92,7 +92,7 @@ module VCAP::Services::Base::AsyncJob
       files = []
       Zip::ZipFile.foreach(@zipfile) do |entry|
         next if entry.to_s == MANIFEST_FILE
-        entry_name = File.basename entry.to_s
+        entry_name = entry.to_s.sub(/#{CONTENT_FOLDER}\//, "")
         dst_path = File.join(path, entry_name)
         dirname = File.dirname(dst_path)
         FileUtils.mkdir_p(dirname) unless File.exists? dirname
