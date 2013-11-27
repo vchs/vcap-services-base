@@ -51,11 +51,11 @@ describe "Warden Service test", :requires_warden do
     Wardenservice.all.each do |ins|
       id = SecureRandom.uuid
       ins.failed_times = id
-      verify[ins.name] = id
+      verify[ins.service_id] = id
     end
 
     Wardenservice.all.each do |ins|
-      ins.failed_times.should == verify[ins.name]
+      ins.failed_times.should == verify[ins.service_id]
     end
   end
 
@@ -66,9 +66,9 @@ describe "Warden Service test", :requires_warden do
   it "should have correct instance directories" do
     @instance.image_file.should == ""
     @instance.image_file?.should be_false
-    @instance.base_dir.should == File.join(@instance.class.base_dir, @instance.name)
+    @instance.base_dir.should == File.join(@instance.class.base_dir, @instance.service_id)
     @instance.base_dir?.should be_true
-    @instance.log_dir.should == File.join(@instance.class.log_dir, @instance.name)
+    @instance.log_dir.should == File.join(@instance.class.log_dir, @instance.service_id)
     @instance.log_dir?.should be_true
     @instance.util_dirs.should be_instance_of Array
     Dir.exists?(@instance.bin_dir).should be_true

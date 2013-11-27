@@ -19,7 +19,8 @@ DEF_OPTIONS = {
 
 class Wardenservice < VCAP::Services::Base::Warden::Service
   include DataMapper::Resource
-  property :name,       String,   :key => true
+  property :service_id, String,   :key => true
+  property :name,       String,   :required => true
   property :port,       Integer,  :unique => true
   property :container,  String
   property :ip,         String
@@ -31,6 +32,7 @@ class Wardenservice < VCAP::Services::Base::Warden::Service
 
     def create(version="1.0")
       instance = new
+      instance.service_id = SecureRandom.uuid
       instance.name = SecureRandom.uuid
       instance.version = version
       instance.port = instance.class.service_port

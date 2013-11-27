@@ -40,12 +40,12 @@ class VCAP::Services::Base::Warden::Service
     def define_im_properties(*args)
       args.each do |prop|
         define_method("#{prop}=".to_sym) do |value|
-          self.class.in_memory_status[self[:name]] ||= {}
-          self.class.in_memory_status[self[:name]][prop] = value
+          self.class.in_memory_status[self[:service_id]] ||= {}
+          self.class.in_memory_status[self[:service_id]][prop] = value
         end
 
         define_method(prop) do
-          self.class.in_memory_status[self[:name]] && self.class.in_memory_status[self[:name]][prop]
+          self.class.in_memory_status[self[:service_id]] && self.class.in_memory_status[self[:service_id]][prop]
         end
       end
     end
@@ -70,15 +70,15 @@ class VCAP::Services::Base::Warden::Service
   def prepare_filesystem(max_size, opts={})
     if base_dir?
       self.class.sh "umount #{base_dir}", :raise => false if self.class.quota
-      logger.warn("Service #{self[:name]} base_dir:#{base_dir} already exists, deleting it")
+      logger.warn("Service #{self[:service_id]} base_dir:#{base_dir} already exists, deleting it")
       FileUtils.rm_rf(base_dir)
     end
     if log_dir?
-      logger.warn("Service #{self[:name]} log_dir:#{log_dir} already exists, deleting it")
+      logger.warn("Service #{self[:service_id]} log_dir:#{log_dir} already exists, deleting it")
       FileUtils.rm_rf(log_dir)
     end
     if image_file?
-      logger.warn("Service #{self[:name]} image_file:#{image_file} already exists, deleting it")
+      logger.warn("Service #{self[:service_id]} image_file:#{image_file} already exists, deleting it")
       FileUtils.rm_f(image_file)
     end
     FileUtils.mkdir_p(base_dir)
@@ -128,11 +128,11 @@ class VCAP::Services::Base::Warden::Service
     begin
       old_size = File.size(image_file)
       self.class.sh "resize2fs -f #{image_file} #{self.class.max_disk.to_i}M"
-      logger.info("Service #{self[:name]} change loop file size from #{old_size / 1024 / 1024}M to #{self.class.max_disk}M")
+      logger.info("Service #{self[:service_id]} change loop file size from #{old_size / 1024 / 1024}M to #{self.class.max_disk}M")
     rescue => e
       # Revert image file to the backup if resize raise error
       self.class.sh "cp #{image_file}.bak #{image_file}"
-      logger.error("Service #{self[:name]} revert image file for error #{e}")
+      logger.error("Service #{self[:service_id]} revert image file for error #{e}")
     ensure
       self.class.sh "rm -f #{image_file}.bak"
     end
@@ -157,12 +157,12 @@ class VCAP::Services::Base::Warden::Service
       loop_resize if need_loop_resize?
       unless loop_setup?
         # for case where VM rebooted
-        logger.info("Service #{self[:name]} mounting data file")
+        logger.info("Service #{self[:service_id]} mounting data file")
         loop_setup
       end
     else
       if self.class.quota
-        logger.warn("Service #{self[:name]} need migration to quota")
+        logger.warn("Service #{self[:service_id]} need migration to quota")
         to_loopfile
       end
     end
@@ -179,7 +179,7 @@ class VCAP::Services::Base::Warden::Service
   # instance operation helper
   def delete
     container_name = self[:container]
-    name = self[:name]
+    name = self[:service_id]
     task "destroy record in local db" do
       destroy! if saved?
     end
@@ -276,17 +276,17 @@ class VCAP::Services::Base::Warden::Service
 
   # directory helper
   def image_file
-    return File.join(self.class.image_dir, "#{self[:name]}.img") if self.class.image_dir
+    return File.join(self.class.image_dir, "#{self[:service_id]}.img") if self.class.image_dir
     ''
   end
 
   def base_dir
-    return File.join(self.class.base_dir, self[:name]) if self.class.base_dir
+    return File.join(self.class.base_dir, self[:service_id]) if self.class.base_dir
     ''
   end
 
   def log_dir
-    return File.join(self.class.log_dir, self[:name]) if self.class.log_dir
+    return File.join(self.class.log_dir, self[:service_id]) if self.class.log_dir
     ''
   end
 
