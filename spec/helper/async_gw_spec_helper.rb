@@ -65,14 +65,9 @@ class AsyncGatewayTests
     attr_accessor :unprovision_http_code
     attr_accessor :bind_http_code
     attr_accessor :unbind_http_code
-    attr_accessor :restore_http_code
-    attr_accessor :recover_http_code
-    attr_reader   :migrate_http_code
     attr_reader   :instances_http_code
     attr_reader   :purge_orphan_http_code
     attr_reader   :check_orphan_http_code
-    attr_reader   :snapshots_http_code
-    attr_accessor :last_snapshot
 
     attr_reader :service_unique_id, :plan_unique_id, :label
 
@@ -146,16 +141,11 @@ class AsyncGatewayTests
       @unprovision_http_code = 0
       @bind_http_code = 0
       @unbind_http_code = 0
-      @restore_http_code = 0
-      @recover_http_code = 0
-      @migrate_http_code = 0
       @instances_http_code = 0
       @purge_orphan_http_code = 0
       @check_orphan_http_code = 0
-      @snapshots_http_code = 0
       @last_service_id = nil
       @last_bind_id = nil
-      @last_snapshot = nil
     end
 
     def start
@@ -286,56 +276,6 @@ class AsyncGatewayTests
       }
     end
 
-    def send_restore_request(service_id = nil)
-      service_id ||= @last_service_id
-      msg = Yajl::Encoder.encode({
-        :instance_id => service_id,
-        :backup_path => '/'
-      })
-      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/restore").post(gen_req(msg))
-      http.callback {
-        @restore_http_code = http.response_header.status
-      }
-      http.errback {
-        @restore_http_code = -1
-      }
-    end
-
-    def send_recover_request(service_id = nil)
-      service_id ||= @last_service_id
-      msg = Yajl::Encoder.encode({
-        :instance_id => service_id,
-        :backup_path => '/'
-      })
-      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/recover").post(gen_req(msg))
-      http.callback {
-        @recover_http_code = http.response_header.status
-      }
-      http.errback {
-        @recover_http_code = -1
-      }
-    end
-
-    def send_migrate_request(service_id = nil)
-      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/migration/test_node/test_instance/test_action").post(gen_req)
-      http.callback {
-        @migrate_http_code = http.response_header.status
-      }
-      http.errback {
-        @migrate_http_code = -1
-      }
-    end
-
-    def send_instances_request(service_id = nil)
-      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/service/internal/v1/migration/test_node/instances").get(gen_req)
-      http.callback {
-        @instances_http_code = http.response_header.status
-      }
-      http.errback {
-        @instances_http_code = -1
-      }
-    end
-
     def send_purge_orphan_request
       msg = Yajl::Encoder.encode({
         :orphan_instances => TEST_PURGE_INS_HASH,
@@ -349,6 +289,7 @@ class AsyncGatewayTests
         @purge_orphan_http_code = -1
       }
     end
+
     def send_check_orphan_request
       msg = Yajl::Encoder.encode({
       })
@@ -361,32 +302,6 @@ class AsyncGatewayTests
       }
     end
 
-    def send_get_v2_snapshots_request
-      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v2/configurations/test/snapshots").get(gen_req)
-      http.callback {
-        @snapshots_http_code = http.response_header.status
-        if @snapshots_http_code == 200
-          res = VCAP::Services::Api::SnapshotListV2.decode(http.response)
-        end
-      }
-      http.errback {
-        @snapshots_http_code = -1
-      }
-    end
-
-    def send_create_v2_snapshot_request(name)
-      payload= Yajl::Encoder.encode({'name' => name})
-      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v2/configurations/test/snapshots").post(gen_req(payload))
-      http.callback {
-        @snapshots_http_code = http.response_header.status
-        if @snapshots_http_code == 200
-          @last_snapshot = VCAP::Services::Api::SnapshotV2.decode(http.response)
-        end
-      }
-      http.errback {
-        @snapshots_http_code = -1
-      }
-    end
   end
 
   class MockCloudController
@@ -433,9 +348,6 @@ class AsyncGatewayTests
     attr_accessor :got_unprovision_request
     attr_accessor :got_bind_request
     attr_accessor :got_unbind_request
-    attr_accessor :got_restore_request
-    attr_accessor :got_recover_request
-    attr_accessor :got_migrate_request
     attr_accessor :got_instances_request
     attr_reader   :purge_orphan_invoked
     attr_reader   :check_orphan_invoked
@@ -448,9 +360,6 @@ class AsyncGatewayTests
       @got_unprovision_request = false
       @got_bind_request = false
       @got_unbind_request = false
-      @got_restore_request = false
-      @got_recover_request = false
-      @got_migrate_request = false
       @got_instances_request = false
       @purge_orphan_invoked = false
       @check_orphan_invoked = false
@@ -494,21 +403,6 @@ class AsyncGatewayTests
       blk.call(success(true))
     end
 
-    def restore_instance(instance_id, backup_path, &blk)
-      @got_restore_request = true
-      blk.call(success(true))
-    end
-
-    def recover(instance_id, backup_path, handles, &blk)
-      @got_recover_request = true
-      blk.call(success(true))
-    end
-
-    def migrate_instance(node_id, instance_id, action, &blk)
-      @got_migrate_request = true
-      blk.call(success(true))
-    end
-
     def get_instance_id_list(node_id, &blk)
       @got_instances_request = true
       blk.call(success(true))
@@ -528,13 +422,6 @@ class AsyncGatewayTests
       @double_check_orphan_invoked = true
     end
 
-    def enumerate_snapshots_v2(service_id, &blk)
-      blk.call(success([]))
-    end
-
-    def create_snapshot_v2(service_id, name, &blk)
-      blk.call(success("snapshot_id" => "999", "name" => name, "state" => "empty", "size" => 0))
-    end
   end
 
   class NastyProvisioner < MockProvisioner
@@ -558,21 +445,6 @@ class AsyncGatewayTests
       blk.call(internal_fail)
     end
 
-    def restore_instance(instance_id, backup_path, &blk)
-      @got_restore_request = true
-      blk.call(internal_fail)
-    end
-
-    def recover(instance_id, backup_path, handles, &blk)
-      @got_recover_request = true
-      blk.call(internal_fail)
-    end
-
-    def migrate_instance(node_id, instance_id, action, &blk)
-      @got_migrate_request = true
-      blk.call(internal_fail)
-    end
-
     def get_instance_id_list(node_id, &blk)
       @got_instances_request = true
       blk.call(internal_fail)
@@ -582,11 +454,9 @@ class AsyncGatewayTests
       @purge_orphan_invoked = true
       blk.call(internal_fail)
     end
+
     def check_orphan(handles,&blk)
       @check_orphan_invoked = true
-      blk.call(internal_fail)
-    end
-    def create_snapshot_v2(service_id, name, &blk)
       blk.call(internal_fail)
     end
   end

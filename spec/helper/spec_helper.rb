@@ -16,7 +16,6 @@ require "datamapper_spec_helper"
 require "warden_service_spec_helper"
 require "instance_utils_spec_helper"
 require "node_utils_spec_helper"
-require "backup_spec_helper"
 require 'vcap_services_messages/service_message'
 require 'base/service_error'
 require "webmock/rspec"
