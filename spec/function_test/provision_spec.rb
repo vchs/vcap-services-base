@@ -282,100 +282,6 @@ describe ProvisionerTests do
       gateway.error_msg['msg']['code'].should == 30500
     end
 
-    it "should support restore (#{version})" do
-      provisioner = nil
-      gateway = nil
-      node = nil
-      EM.run do
-        Do.at(0) do
-          options = {:provisioner_version => version}
-          provisioner = ProvisionerTests.create_provisioner(options)
-        end
-        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-        Do.at(2) { node = ProvisionerTests.create_node(1) }
-        Do.at(3) { gateway.send_provision_request }
-        Do.at(4) { gateway.send_restore_request }
-        Do.at(5) { EM.stop }
-      end
-      gateway.got_restore_response.should be_true
-    end
-
-    it "should handle error in restore (#{version})" do
-      provisioner = nil
-      gateway = nil
-      node = nil
-      EM.run do
-        Do.at(0) do
-          options = {:provisioner_version => version}
-          provisioner = ProvisionerTests.create_provisioner(options)
-        end
-        Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
-        Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-        Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
-        Do.at(4) { gateway.send_restore_request }
-        Do.at(5) { EM.stop }
-      end
-      node.got_restore_request.should be_true
-      gateway.error_msg['status'].should == 500
-      gateway.error_msg['msg']['code'].should == 30500
-    end
-
-    it "should support recover (#{version})" do
-      provisioner = nil
-      gateway = nil
-      node = nil
-      EM.run do
-        Do.at(0) do
-          options = {:provisioner_version => version}
-          provisioner = ProvisionerTests.create_provisioner(options)
-        end
-        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-        Do.at(2) { node = ProvisionerTests.create_node(1, 2) }
-        Do.at(3) { gateway.send_provision_request }
-        Do.at(4) { gateway.send_recover_request }
-        Do.at(10) { EM.stop }
-      end
-      gateway.got_recover_response.should be_true
-    end
-
-    it "should support migration (#{version})" do
-      provisioner = nil
-      gateway = nil
-      node = nil
-      EM.run do
-        Do.at(0) do
-          options = {:provisioner_version => version}
-          provisioner = ProvisionerTests.create_provisioner(options)
-        end
-        Do.at(1) { gateway = ProvisionerTests.create_gateway(provisioner) }
-        Do.at(2) { node = ProvisionerTests.create_node(1, 2) }
-        Do.at(3) { gateway.send_provision_request }
-        Do.at(4) { gateway.send_migrate_request("node-1") }
-        Do.at(10) { EM.stop }
-      end
-      gateway.got_migrate_response.should be_true
-    end
-
-    it "should handle error in migration (#{version})" do
-      provisioner = nil
-      gateway = nil
-      node = nil
-      EM.run do
-        Do.at(0) do
-          options = {:provisioner_version => version}
-          provisioner = ProvisionerTests.create_provisioner(options)
-        end
-        Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
-        Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-        Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
-        Do.at(4) { gateway.send_migrate_request("node-1") }
-        Do.at(5) { EM.stop }
-      end
-      node.got_migrate_request.should be_true
-      gateway.error_msg['status'].should == 500
-      gateway.error_msg['msg']['code'].should == 30500
-    end
-
     it "should support get instance id list (#{version})" do
       provisioner = nil
       gateway = nil
@@ -392,25 +298,6 @@ describe ProvisionerTests do
         Do.at(5) { EM.stop }
       end
       gateway.got_instances_response.should be_true
-    end
-
-    it "should handle error in getting instance id list (#{version})" do
-      provisioner = nil
-      gateway = nil
-      node = nil
-      EM.run do
-        Do.at(0) do
-          options = {:provisioner_version => version}
-          provisioner = ProvisionerTests.create_provisioner(options)
-        end
-        Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
-        Do.at(2) { node = ProvisionerTests.create_error_node(1) }
-        Do.at(3) { ProvisionerTests.setup_fake_instance(gateway, provisioner, node) }
-        Do.at(4) { gateway.send_migrate_request("node-1") }
-        Do.at(5) { EM.stop }
-      end
-      gateway.error_msg['status'].should == 500
-      gateway.error_msg['msg']['code'].should == 30500
     end
 
     it "should allow over provisioning when it is configured so (#{version})" do

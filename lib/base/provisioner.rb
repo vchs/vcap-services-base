@@ -8,9 +8,6 @@ $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'base/base'
 require 'base/simple_aop'
 require 'base/job/async_job'
-require 'base/job/snapshot'
-require 'base/job/serialization'
-require 'base/snapshot_v2/snapshot_client'
 require 'barrier'
 require 'vcap_services_messages/service_message'
 require 'securerandom'
@@ -18,15 +15,10 @@ require 'securerandom'
 class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   include VCAP::Services::Internal
   include VCAP::Services::Base::AsyncJob
-  include VCAP::Services::Base::AsyncJob::Snapshot
   include Before
 
   BARRIER_TIMEOUT = 2
   MASKED_PASSWORD = '********'
-
-  def snapshot_client
-    @snapshot_client ||= VCAP::Services::Base::SnapshotV2::SnapshotClient.new(options.fetch(:snapshot_db))
-  end
 
   attr_reader :options, :node_nats
 
@@ -104,8 +96,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       lifecycle = value[:lifecycle]
       next unless lifecycle
       @extensions[plan] ||= {}
-      @extensions[plan][:snapshot] = lifecycle.has_key? :snapshot
-      %w(serialization job).each do |ext|
+      %w(job).each do |ext|
         ext = ext.to_sym
         @extensions[plan][ext] = true if lifecycle[ext] == "enable"
       end
@@ -155,7 +146,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       if addition_opts[:resque]
         # Initial AsyncJob module
         job_repo_setup()
-        VCAP::Services::Base::AsyncJob::Snapshot.redis_connect
       end
     end
   end
@@ -562,236 +552,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  def restore_instance(instance_id, backup_path, &blk)
-    @logger.debug("[#{service_description}] Attempting to restore to service #{instance_id}")
-
-    begin
-      svc = get_instance_handle(instance_id)
-      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
-
-      node_id = svc[:credentials]["node_id"]
-      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
-
-      @logger.debug("[#{service_description}] restore instance #{instance_id} from #{node_id}")
-      request = RestoreRequest.new
-      request.instance_id = instance_id
-      request.backup_path = backup_path
-      subscription = nil
-      timer = EM.add_timer(@node_timeout) {
-        @node_nats.unsubscribe(subscription)
-        blk.call(timeout_fail)
-      }
-      subscription =
-        @node_nats.request( "#{service_name}.restore.#{node_id}",
-          request.encode
-       ) do |msg|
-          EM.cancel_timer(timer)
-          @node_nats.unsubscribe(subscription)
-          opts = SimpleResponse.decode(msg)
-          if opts.success
-            blk.call(success())
-          else
-            blk.call(wrap_error(opts))
-          end
-        end
-    rescue => e
-      if e.instance_of? ServiceError
-        blk.call(failure(e))
-      else
-        @logger.warn("Exception at restore_instance #{e}")
-        blk.call(internal_fail)
-      end
-    end
-  end
-
-  # Recover an instance
-  # 1) Provision an instance use old credential
-  # 2) restore instance use backup file
-  # 3) re-bind bindings use old credential
-  def recover(instance_id, backup_path, handles, &blk)
-    @logger.debug("Recover instance: #{instance_id} from #{backup_path} with #{handles.size} handles.")
-    prov_handle, binding_handles = find_instance_handles(instance_id, handles)
-    @logger.debug("Provsion handle: #{prov_handle.inspect}. Binding_handles: #{binding_handles.inspect}")
-    req = prov_handle["configuration"]
-    request = VCAP::Services::Api::GatewayProvisionRequest.new
-    request.label = "SERVICENAME-#{req["version"]}" # TODO: TEMPORARY CHANGE UNTIL WE UPDATE vcap_common gem git ref
-    request.plan = req["plan"]
-    request.version = req["version"]
-    provision_service(request, prov_handle) do |msg|
-      if msg['success']
-        updated_prov_handle = msg['response']
-        updated_prov_handle = hash_sym_key_to_str(updated_prov_handle)
-        @logger.info("Recover: Success re-provision instance. Updated handle:#{updated_prov_handle}")
-        @update_handle_callback.call(updated_prov_handle) do |update_res|
-          if not update_res
-            @logger.error("Recover: Update provision handle failed.")
-            blk.call(internal_fail)
-          else
-            @logger.info("Recover: Update provision handle success.")
-            restore_instance(instance_id, backup_path) do |res|
-              if res['success']
-                @logger.info("Recover: Success restore instance data.")
-                barrier = VCAP::Services::Base::Barrier.new(:timeout => BARRIER_TIMEOUT, :callbacks => binding_handles.length) do |responses|
-                  @logger.debug("Response from barrier: #{responses}.")
-                  updated_handles = responses.select{|i| i[0] }
-                  if updated_handles.length != binding_handles.length
-                    @logger.error("Recover: re-bind or update handle failed. Expect #{binding_handles.length} successful responses, got #{updated_handles.length} ")
-                    blk.call(internal_fail)
-                  else
-                    @logger.info("Recover: recover instance #{instance_id} complete!")
-                    result = {
-                      'success' => true,
-                      'response' => "{}"
-                    }
-                    blk.call(result)
-                  end
-                end
-                @logger.info("Recover: begin rebind binding handles.")
-                bcb = barrier.callback
-                binding_handles.each do |handle|
-                  bind_instance(instance_id, nil, handle) do |bind_res|
-                    if bind_res['success']
-                      updated_bind_handle = bind_res['response']
-                      updated_bind_handle = hash_sym_key_to_str(updated_bind_handle)
-                      @logger.info("Recover: success re-bind binding: #{updated_bind_handle}")
-                      @update_handle_callback.call(updated_bind_handle) do |update_response|
-                        if update_response
-                          @logger.info("Recover: success to update handle: #{updated_prov_handle}")
-                          bcb.call(updated_bind_handle)
-                        else
-                          @logger.error("Recover: failed to update handle: #{updated_prov_handle}")
-                          bcb.call(false)
-                        end
-                      end
-                    else
-                      @logger.error("Recover: failed to re-bind binding handle: #{handle}")
-                      bcb.call(false)
-                    end
-                  end
-                end
-              else
-                @logger.error("Recover: failed to restore instance: #{instance_id}.")
-                blk.call(internal_fail)
-              end
-            end
-          end
-        end
-      else
-        @logger.error("Recover: failed to re-provision instance. Handle: #{prov_handle}.")
-        blk.call(internal_fail)
-      end
-    end
-  rescue => e
-    @logger.warn("Exception at recover #{e}")
-    blk.call(internal_fail)
-  end
-
-  def migrate_instance(node_id, instance_id, action, &blk)
-    @logger.debug("[#{service_description}] Attempting to #{action} instance #{instance_id} in node #{node_id}")
-
-    begin
-      svc = get_instance_handle(instance_id)
-      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
-
-      binding_handles = find_instance_bindings(instance_id)
-      subscription = nil
-      message = nil
-      channel = nil
-      if action == "disable" || action == "enable" || action == "import" || action == "update" || action == "cleanupnfs"
-        channel = "#{service_name}.#{action}_instance.#{node_id}"
-        message = Yajl::Encoder.encode([svc, binding_handles])
-      elsif action == "unprovision"
-        channel = "#{service_name}.unprovision.#{node_id}"
-        bindings = find_instance_bindings(instance_id)
-        request = UnprovisionRequest.new
-        request.name = instance_id
-        request.bindings = bindings.map{|h| h[:credentials]}
-        message = request.encode
-      elsif action == "check"
-        if node_id == svc[:credentials]["node_id"]
-          blk.call(success())
-          return
-        else
-          raise ServiceError.new(ServiceError::NOT_FOUND, instance_id)
-        end
-      else
-        raise ServiceError.new(ServiceError::NOT_FOUND, action)
-      end
-      timer = EM.add_timer(@node_timeout) {
-        @node_nats.unsubscribe(subscription)
-        blk.call(timeout_fail)
-      }
-      subscription = @node_nats.request(channel, message) do |msg|
-        EM.cancel_timer(timer)
-        @node_nats.unsubscribe(subscription)
-        if action != "update"
-          response = SimpleResponse.decode(msg)
-          if response.success
-            blk.call(success())
-          else
-            blk.call(wrap_error(response))
-          end
-        else
-          handles = Yajl::Parser.parse(msg)
-          handles.each do |handle|
-            @update_handle_callback.call(handle) do |update_res|
-              if update_res
-                @logger.info("Migration: success to update handle: #{handle}")
-              else
-                @logger.error("Migration: failed to update handle: #{handle}")
-                blk.call(wrap_error(response))
-              end
-            end
-            blk.call(success())
-          end
-        end
-      end
-    rescue => e
-      if e.instance_of? ServiceError
-        blk.call(failure(e))
-      else
-        @logger.warn("Exception at migrate_instance #{e}")
-        blk.call(internal_fail)
-      end
-    end
-  end
-
-  # Snapshot apis filter
-  def before_snapshot_apis service_id, *args, &blk
-    raise "service_id can't be nil" unless service_id
-
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-
-    plan = find_service_plan(svc)
-    extensions_enabled?(plan, :snapshot, &blk)
-  rescue => e
-    handle_error(e, &blk)
-    nil # terminate evoke chain
-  end
-
-  def find_service_plan(svc)
-    config = svc[:configuration] || svc["configuration"]
-    raise "Can't find configuration for service=#{service_id} #{svc.inspect}" unless config
-    plan = config["plan"] || config[:plan]
-    raise "Can't find plan for service=#{service_id} #{svc.inspect}" unless plan
-    plan
-  end
-
-  # Serialization apis filter
-  def before_serialization_apis service_id, *args, &blk
-    raise "service_id can't be nil" unless service_id
-
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-
-    plan = find_service_plan(svc)
-    extensions_enabled?(plan, :serialization, &blk)
-  rescue => e
-    handle_error(e, &blk)
-    nil # terminate evoke chain
-  end
-
   def before_job_apis service_id, *args, &blk
     raise "service_id can't be nil" unless service_id
 
@@ -815,35 +575,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
-  def snapshot_metadata(service_id)
-    service = self.options[:service]
-    instance = get_instance_handle(service_id)
-
-    metadata = {
-      :plan => find_service_plan(instance),
-      :provider => service[:provider] || 'core',
-      :service_version => instance[:configuration][:version],
-    }
-    metadata
-  rescue => e
-    @logger.warn("Failed to get snapshot_metadata #{e}.")
-  end
-
-  # Create a create_snapshot job and return the job object.
-  #
-  def create_snapshot(service_id, &blk)
-    @logger.debug("Create snapshot job for service_id=#{service_id}")
-    job_id = create_snapshot_job.create(:service_id => service_id,
-                                        :node_id => find_node(service_id),
-                                        :metadata=> snapshot_metadata(service_id),
-                                       )
-    job = get_job(job_id)
-    @logger.info("CreateSnapshotJob created: #{job.inspect}")
-    blk.call(success(job))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
   # Get detail job information by job id.
   #
   def job_details(service_id, job_id, &blk)
@@ -855,126 +586,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     blk.call(success(job))
   rescue => e
     handle_error(e, &blk)
-  end
-
-  # Get detail snapshot information
-  #
-  def get_snapshot(service_id, snapshot_id, &blk)
-    @logger.debug("Get snapshot_id=#{snapshot_id} for service_id=#{service_id}")
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-    snapshot = snapshot_details(service_id, snapshot_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    blk.call(success(filter_keys(snapshot)))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  # Update the name of a snapshot
-  def update_snapshot_name(service_id, snapshot_id, name, &blk)
-    @logger.debug("Update name of snapshot=#{snapshot_id} for service_id=#{service_id} to '#{name}'")
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-
-    update_name(service_id, snapshot_id, name)
-    blk.call(success())
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  # Get all snapshots related to an instance
-  #
-  def enumerate_snapshots(service_id, &blk)
-    @logger.debug("Get snapshots for service_id=#{service_id}")
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-    snapshots = service_snapshots(service_id)
-    res = snapshots.map{|s| filter_keys(s)}
-    blk.call(success({:snapshots => res }))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  def rollback_snapshot(service_id, snapshot_id, &blk)
-    @logger.debug("Rollback snapshot=#{snapshot_id} for service_id=#{service_id}")
-    svc = get_instance_handle(service_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, service_id) unless svc
-    snapshot = snapshot_details(service_id, snapshot_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    job_id = rollback_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id,
-                  :node_id => find_node(service_id))
-    job = get_job(job_id)
-    @logger.info("RoallbackSnapshotJob created: #{job.inspect}")
-    blk.call(success(job))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  def delete_snapshot(service_id, snapshot_id, &blk)
-    @logger.debug("Delete snapshot=#{snapshot_id} for service_id=#{service_id}")
-    snapshot = snapshot_details(service_id, snapshot_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    job_id = delete_snapshot_job.create(:service_id => service_id, :snapshot_id => snapshot_id, :node_id => find_node(service_id))
-    job = get_job(job_id)
-    @logger.info("DeleteSnapshotJob created: #{job.inspect}")
-    blk.call(success(job))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  def create_serialized_url(service_id, snapshot_id, &blk)
-    @logger.debug("create serialized url for snapshot=#{snapshot_id} of service_id=#{service_id}")
-    snapshot = snapshot_details(service_id, snapshot_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    job_id = create_serialized_url_job.create(:service_id => service_id, :node_id => find_node(service_id), :snapshot_id => snapshot_id)
-    job = get_job(job_id)
-    blk.call(success(job))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  # Genereate the serialized URL of service snapshot.
-  # Return NOTFOUND error if no download token is associate with service instance.
-  def get_serialized_url(service_id, snapshot_id, &blk)
-    @logger.debug("get serialized url for snapshot=#{snapshot_id} of service_id=#{service_id}")
-    snapshot = snapshot_details(service_id, snapshot_id)
-    raise ServiceError.new(ServiceError::NOT_FOUND, snapshot_id) unless snapshot
-    token = snapshot["token"]
-    raise ServiceError.new(ServiceError::NOT_FOUND, "Download url for service_id=#{service_id}, snapshot=#{snapshot_id}") unless token
-
-    url_template = self.options[:download_url_template]
-    service = self.options[:service][:name]
-    raise "Configuration error, can't find download_url_template" unless url_template
-    raise "Configuration error, can't find service name." unless service
-    url = url_template % {:service => service, :name => service_id, :snapshot_id => snapshot_id, :token => token}
-    blk.call(success({:url => url}))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  def import_from_url(service_id, url, &blk)
-    @logger.debug("import serialized data from url:#{url} for service_id=#{service_id}")
-    job_id = import_from_url_job.create(:service_id => service_id, :url => url, :node_id => find_node(service_id))
-    job = get_job(job_id)
-    blk.call(success(job))
-  rescue => e
-    wrap_error(e, &blk)
-  end
-
-  # convert symbol key to string key
-  def hash_sym_key_to_str(hash)
-    new_hash = {}
-    hash.each do |k, v|
-      if v.is_a? Hash
-        v = hash_sym_key_to_str(v)
-      end
-      if k.is_a? Symbol
-        new_hash[k.to_s] = v
-      else
-        new_hash[k] = v
-      end
-    end
-    return new_hash
   end
 
   def on_update_service_handle(msg, reply)
@@ -1097,30 +708,6 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   # service_name() --> string
   # (inhereted from VCAP::Services::Base::Base)
   #
-
-  # Snapshot v2 API
-
-  def create_snapshot_v2(service_id, name, &blk)
-    snapshot = snapshot_client.create_empty_snapshot(service_id, name)
-    blk.call(success(snapshot))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  def enumerate_snapshots_v2(service_id, &blk)
-    snapshots = snapshot_client.service_snapshots(service_id)
-    blk.call(success(snapshots))
-  rescue => e
-    handle_error(e, &blk)
-  end
-
-  # various lifecycle jobs class
-  abstract :create_snapshot_job, :rollback_snapshot_job, :delete_snapshot_job, :create_serialized_url_job, :import_from_url_job
-
-  # register before filter
-  before [:create_snapshot, :get_snapshot, :enumerate_snapshots, :delete_snapshot, :rollback_snapshot, :update_snapshot_name, :enumerate_snapshots_v2, :create_snapshot_v2],  :before_snapshot_apis
-
-  before [:create_serialized_url, :get_serialized_url, :import_from_url], :before_serialization_apis
 
   before :job_details, :before_job_apis
 end

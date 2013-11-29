@@ -67,8 +67,7 @@ module VCAP::Services::Base::ProvisionerV3
       lifecycle = value[:lifecycle]
       next unless lifecycle
       @extensions[plan] ||= {}
-      @extensions[plan][:snapshot] = lifecycle.has_key? :snapshot
-      %w(backup serialization job).each do |ext|
+      %w(backup job).each do |ext|
         ext = ext.to_sym
         @extensions[plan][ext] = true if lifecycle[ext] == "enable"
       end
@@ -323,16 +322,6 @@ module VCAP::Services::Base::ProvisionerV3
     plan = config["plan"] || config[:plan]
     raise "Can't find plan for service=#{service_id} #{svc.inspect}" unless plan
     plan
-  end
-
-  def extensions_enabled?(plan, extension, &blk)
-    unless (@extensions[plan.to_sym] && @extensions[plan.to_sym][extension.to_sym])
-      @logger.warn("Extension #{extension} is not enabled for plan #{plan}")
-      blk.call(failure(ServiceError.new(ServiceError::EXTENSION_NOT_IMPL, extension)))
-      nil
-    else
-      true
-    end
   end
 
   def backup_metadata(service_id)
