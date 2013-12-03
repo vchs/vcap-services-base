@@ -435,7 +435,8 @@ describe ProvisionerTests do
               response.success = true
               response.credentials = {
                   "node_id" => "node-1",
-                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
+                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd",
+                  "service_id" => "622b4424-a644-4fcc-a363-6acb5f4952dd",
               }
             elsif provision_request == "Test.unprovision.node-1"
               response = VCAP::Services::Internal::SimpleResponse.new
@@ -444,7 +445,8 @@ describe ProvisionerTests do
               response = VCAP::Services::Internal::BindResponse.new
               response.success = true
               response.credentials = {
-                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
+                  "name" => "622b4424-a644-4fcc-a363-6acb5f4952dd",
+                  "service_id" => "622b4424-a644-4fcc-a363-6acb5f4952dd"
               }
             end
             cb.call(response.encode)
@@ -873,8 +875,10 @@ describe ProvisionerTests do
         msg1.node_id = "node-2"
         ins_list = Array.new(2) { |i| (2 * 10 + i).to_s.ljust(36, "I") }
         bind_list = Array.new(2) do |i|
+          name = (2 * 10 + i).to_s.ljust(36, "I")
           {
-            "name" => (2 * 10 + i).to_s.ljust(36, "I"),
+            "name" => name,
+            "service_id" => name,
             "username" => (2 * 10 + i).to_s.ljust(18, "U"),
             "port" => i * 1000 + 1,
             "db" => "db2"
@@ -886,8 +890,10 @@ describe ProvisionerTests do
         msg2.node_id = "node-3"
         ins_list = Array.new(3) { |i| (3 * 10 + i).to_s.ljust(36, "I") }
         bind_list = Array.new(3) do |i|
+          name = (3 * 10 + i).to_s.ljust(36, "I")
           {
-            "name" => (3 * 10 + i).to_s.ljust(36, "I"),
+            "name" => name,
+            "service_id" => name,
             "username" => (3 * 10 + i).to_s.ljust(18, "U"),
             "port" => i * 1000 + 1,
             "db" => "db3"

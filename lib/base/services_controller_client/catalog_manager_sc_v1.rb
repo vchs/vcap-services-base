@@ -158,7 +158,7 @@ module VCAP
         end
 
         def update_handle_uri(handle)
-          if handle['gateway_name'] == handle['credentials']['name']
+          if handle['gateway_name'] == handle['credentials']['service_id']
             return "#{@service_instances_uri}/internal/#{handle['gateway_name']}"
           else
             return "#{@service_bindings_uri}/internal/#{handle['gateway_name']}"
@@ -197,8 +197,8 @@ module VCAP
           @multiple_page_getter.each(service_instance_uri, "Service Instance Handles") do |i|
             instance_entity = i.fetch('entity')
             instance_properties = JSON.parse(instance_entity["properties"])
-            instance_handles[instance_properties["credentials"]["name"]] = instance_properties
-            @handle_guid[instance_properties["credentials"]["name"]] = instance_properties["service_id"]
+            instance_handles[instance_properties["credentials"]["service_id"]] = instance_properties
+            @handle_guid[instance_properties["credentials"]["service_id"]] = instance_properties["service_id"]
           end
           instance_handles
         rescue => e

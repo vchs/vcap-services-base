@@ -257,6 +257,20 @@ describe NodeTests do
     provisioner.response["success"].should be_true
   end
 
+  it "should handle provision with restore related properties" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      Do.sec(0) { node = NodeTests.create_node }
+      Do.sec(1) { provisioner = NodeTests.create_provisioner }
+      Do.sec(2) { provisioner.send_provision_request({:is_restoring => true}) }
+      Do.sec(10) { EM.stop }
+    end
+    node.provision_invoked.should be_true
+    node.provision_times.should eq 1
+    provisioner.got_provision_response.should be_true
+  end
+
   it "should support unprovision" do
     node = nil
     mock_nats = nil
