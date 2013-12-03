@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2013 VMware, Inc.
 require 'base/provisioner_v2'
+require 'vcap_services_messages/constants'
 
 module VCAP::Services::Base::ProvisionerV3
   include VCAP::Services::Base::ProvisionerV2
   include VCAP::Services::Internal
   include VCAP::Services::Base::Error
   include Before
+
+  PA = VCAP::Services::Internal::ProvisionArguments
 
   def update_instance_handles(instance_handles)
     instance_handles.each do |instance_id, instance_handle|
@@ -188,6 +191,14 @@ module VCAP::Services::Base::ProvisionerV3
     plan = request.plan || "free"
     version = request.version
 
+    is_restoring = false
+    if request.respond_to? :properties
+      backup_id = request.properties[PA::BACKUP_ID]
+      original_service_id = request.properties[PA::ORIGINAL_SERVICE_ID]
+      is_restoring = true if backup_id && original_service_id
+      @logger.debug("Restoring previous instance #{original_service_id} from backup #{backup_id}") if is_restoring
+    end
+
     plan_nodes = @nodes.select{ |_, node| node["plan"] == plan}.values
 
     @logger.debug("[#{service_description}] Picking version nodes from the following #{plan_nodes.count} \'#{plan}\' plan nodes: #{plan_nodes}")
@@ -210,13 +221,23 @@ module VCAP::Services::Base::ProvisionerV3
                                    !best_nodes.find {|n| node_score(n) <= 0} )
           @logger.debug("[#{service_description}] Provisioning on #{best_nodes}")
           service_id = generate_service_id
+
+          original_instance_handle = {}
+          original_creds = {}
+          if is_restoring
+            original_instance_handle = get_instance_handle(original_service_id)
+            raise "original instance #{original_service_id} not found" unless original_instance_handle
+            original_creds = original_instance_handle[:credentials]
+            raise "credentials for original instance #{original_service_id} not found" unless original_creds
+          end
+
           # Subclass should define generate_recipes and return an instance of
           # VCAP::Services::Internal::ServiceRecipes.
           # recipes.credentials is the connection string presents to end user. Base code treat
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config },version, best_nodes)
+          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, original_creds)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
@@ -224,65 +245,141 @@ module VCAP::Services::Base::ProvisionerV3
           instance_credentials = recipes.credentials
           configuration = recipes.configuration
           peers = configuration["peers"]
-          peers.each do |peer|
-            creds = peer["credentials"]
-            node_id = creds["node_id"]
-            prov_req = ProvisionRequest.new
-            prov_req.plan = plan
-            prov_req.version = version
-            prov_req.credentials = creds
-
-            @provision_refs[node_id] += 1
-            @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
-            subject = "#{service_name}.provision.#{node_id}"
-            payload = prov_req.encode
-            @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
-            @node_nats.request(subject, payload) do |msg|
-              @logger.debug("Successfully provision response:[#{msg}]")
-            end
-          end
-
-          provision_failure_callback = Proc.new do
-            begin
-              blk.call(timeout_fail)
-            ensure
-              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
-            end
-          end
-
-          # Recover gateway status if even health manager failed.
-          timer = EM.add_timer(@node_timeout) do
-            begin
-              @logger.warn("Provision #{service_id} timeout after after #{@node_timeout} seconds")
-              @instance_provision_callbacks.delete service_id.to_sym
-              blk.call(timeout_fail)
-            ensure
-              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
-            end
-          end
-
-          provision_success_callback = Proc.new do |*args|
-            begin
-              @logger.info("Successfully provision response from HM for #{service_id}")
-              EM.cancel_timer(timer)
-              svc = { configuration:  configuration,
-                      service_id:     service_id,
-                      credentials:    instance_credentials
-              }
-              @logger.debug("Provisioned: #{svc.inspect}")
-              add_instance_handle(svc)
-              blk.call(success(svc))
-            ensure
-              each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
-            end
-          end
-
-          #register callbacks
-          @instance_provision_callbacks[service_id.to_sym] = {
-            success:  provision_success_callback,
-            failed:   provision_failure_callback,
-            timeout_timer: timer
+          provision_response_status = is_restoring ?
+            VCAP::Services::Internal::ServiceInstanceStatus::RESTORING :
+            VCAP::Services::Internal::ServiceInstanceStatus::READY
+          svc = { configuration:  configuration,
+                  service_id:     service_id,
+                  credentials:    instance_credentials,
+                  status:         provision_response_status
           }
+
+          prov_properties = {}
+          provision_blk = Proc.new do |callback|
+            peers.each do |peer|
+              creds = peer["credentials"]
+              node_id = creds["node_id"]
+              prov_req = ProvisionRequest.new
+              prov_req.plan = plan
+              prov_req.version = version
+              prov_req.credentials = creds
+              prov_req.properties = prov_properties
+
+              @provision_refs[node_id] += 1
+              @nodes[node_id]['available_capacity'] -= @nodes[node_id]['capacity_unit']
+              subject = "#{service_name}.provision.#{node_id}"
+              payload = prov_req.encode
+              @logger.debug("Send provision request to #{node_id}, payload #{payload}.")
+              @node_nats.request(subject, payload) do |msg|
+                @logger.debug("Successfully provision response:[#{msg}]")
+              end
+            end
+
+            provision_failure_callback = Proc.new do
+              begin
+                callback.call(timeout_fail)
+              ensure
+                each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+              end
+            end
+
+            # Recover gateway status if even health manager failed.
+            timer = EM.add_timer(@node_timeout) do
+              begin
+                @logger.warn("Provision #{service_id} timeout after after #{@node_timeout} seconds")
+                @instance_provision_callbacks.delete service_id.to_sym
+                callback.call(timeout_fail)
+              ensure
+                each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+              end
+            end
+
+            provision_success_callback = Proc.new do |*args|
+              begin
+                @logger.info("Successfully provision response from HM for #{service_id}")
+                EM.cancel_timer(timer)
+                @logger.debug("Provisioned: #{svc.inspect}")
+                add_instance_handle(svc)
+                callback.call(success(svc))
+              ensure
+                each_peer(peers) {|node_id, _| @provision_refs[node_id] -= 1 }
+              end
+            end
+
+            #register callbacks
+            @instance_provision_callbacks[service_id.to_sym] = {
+              success:  provision_success_callback,
+              failed:   provision_failure_callback,
+              timeout_timer: timer
+            }
+          end
+
+          if is_restoring
+            prov_properties = {:is_restring => true}
+            restore_opts = user_triggered_options({:plan => plan, :service_version => version})
+            job_triggered = true
+            count = peers.size
+
+            subscription = nil
+            timer = EM.add_timer(@restore_timeout) do
+              @logger.warn("Restoring job for #{service_id} timeout after #{@restore_timeout} seconds")
+              @node_nats.unsubscribe(subscription) if subscription
+            end
+            subscription = @node_nats.subscribe("#{service_name}.restore_backup.#{service_id}") do |msg, reply|
+              sr = SimpleResponse.decode(msg)
+              res_to_woker = SimpleResponse.new
+              begin
+                if sr.success
+                  count -= 1
+                  if count == 0
+                    # TODO update instance status to "Ready"
+                    update_status_blk = Proc.new do |res|
+                      if res["success"]
+                        @logger.info("Successfully provision after restore for #{service_id}")
+                        # update Instance status to ready
+                      else
+                        @logger.warn("Provision after restore failed for #{service_id}")
+                        # update Instance status to failed
+                      end
+                    end
+                    provision_blk.call(update_status_blk)
+                    @node_nats.unsubscribe(subscription) if subscription
+                    EM.cancel_timer(timer)
+                  end
+                else
+                  @logger.warn("Restoring job for #{service_id} failed")
+                  @node_nats.unsubscribe(subscription) if subscription
+                  EM.cancel_timer(timer)
+                end
+                res_to_woker.success = true
+              rescue => e
+                @logger.warn("Exception at provision after restore job: #{e}")
+                res_to_woker.success = false
+              ensure
+                @node_nats.publish(reply, res_to_woker.encode)
+              end
+            end
+
+            peers.each do |peer|
+              node_id = peer["credentials"]["node_id"]
+              result = restore_backup(service_id, backup_id, node_id, original_service_id, restore_opts)
+              job_triggered = false unless result
+            end
+
+            if job_triggered
+              @logger.info("Provision for restoring: #{svc.inspect}")
+              blk.call(success(svc))
+            else
+              @logger.warn("Provision for restoring failed because of error in restore job: #{svc.inspect}")
+              @node_nats.unsubscribe(subscription) if subscription
+              EM.cancel_timer(timer)
+              blk.call(internal_fail)
+            end
+          else
+            prov_properties = {:is_restring => false}
+            provision_blk.call(blk)
+          end
+
           service_id
         else
           # No resources
@@ -350,9 +447,24 @@ module VCAP::Services::Base::ProvisionerV3
     @logger.info("CreateBackupJob created: #{job.inspect}")
     blk.call(success(job))
   rescue => e
-    @logger.warn("CreateBackupJob failed: #{e}")
-    @logger.warn(e)
+    @logger.error("CreateBackupJob failed: #{e}")
     blk.call(failure(e))
+  end
+
+  def restore_backup(service_id, backup_id, node_id, ori_service_id, opts)
+    @logger.debug("Restore backup job for service_id=#{service_id}")
+    job_id = restore_backup_job.create(:service_id          => service_id,
+                                       :backup_id           => backup_id,
+                                       :original_service_id => ori_service_id,
+                                       :node_id             => node_id,
+                                       :metadata            => opts
+                                      )
+    job = get_job(job_id)
+    @logger.info("RestoreBackupJob created: #{job.inspect}")
+    job.nil? ? false : true
+  rescue
+    @logger.error("RestoreBackupJob failed: #{e}")
+    false
   end
 
   def user_triggered_options(params)

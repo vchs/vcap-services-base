@@ -125,7 +125,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     response = ProvisionResponse.new
     rollback = lambda do |res|
       @logger.error("#{service_description}: Provision takes too long. Rollback for #{res.inspect}")
-      @capacity_lock.synchronize { @capacity += capacity_unit } if unprovision(res.credentials["name"], [])
+      @capacity_lock.synchronize { @capacity += capacity_unit } if unprovision(res.credentials["service_id"], [])
     end
 
     timing_exec(@op_time_limit, rollback) do
@@ -133,13 +133,14 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
       plan = provision_req.plan
       credentials = provision_req.credentials
       version = provision_req.version
-      @logger.debug("#{service_description}: Provision Request Details - plan=#{plan}, credentials=#{credentials}, version=#{version}")
-      credential = provision(plan, credentials, version)
+      properties = provision_req.properties
+      @logger.debug("#{service_description}: Provision Request Details - plan=#{plan}, credentials=#{credentials}, version=#{version} properties #{properties}")
+      credential = provision(plan, credentials, version, properties)
       credential['node_id'] = @node_id
       response.credentials = credential
       @capacity_lock.synchronize { @capacity -= capacity_unit }
       @logger.debug("#{service_description}: Successfully provisioned service for request #{msg}: #{response.inspect}")
-      send_instances_heartbeat(credential[:name])
+      send_instances_heartbeat(credential["service_id"])
       response
     end
     publish(reply, encode_success(response))
@@ -152,9 +153,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.debug("#{service_description}: Unprovision request: #{msg}.")
     response = SimpleResponse.new
     unprovision_req = UnprovisionRequest.decode(msg)
-    name = unprovision_req.name
+    service_id = unprovision_req.name
     bindings = unprovision_req.bindings
-    result = unprovision(name, bindings)
+    result = unprovision(service_id, bindings)
     if result
       publish(reply, encode_success(response))
       @capacity_lock.synchronize { @capacity += capacity_unit }
@@ -176,10 +177,10 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
     timing_exec(@op_time_limit, rollback) do
       bind_message = BindRequest.decode(msg)
-      name = bind_message.name
+      service_id = bind_message.name
       bind_opts = bind_message.bind_opts
       credentials = bind_message.credentials
-      response.credentials = bind(name, bind_opts, credentials)
+      response.credentials = bind(service_id, bind_opts, credentials)
       response
     end
     publish(reply, encode_success(response))
@@ -271,8 +272,8 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     # provisioned services status
     states = {}
     begin
-      given_instance_list.each do |name|
-        states[name.to_sym] = get_instance_health(name)
+      given_instance_list.each do |service_id|
+        states[service_id.to_sym] = get_instance_health(service_id)
       end
     rescue => e
       @logger.error("Error get instance health: #{e}")

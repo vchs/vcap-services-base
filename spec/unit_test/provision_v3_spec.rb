@@ -311,5 +311,89 @@ describe ProvisionerTests do
         EM.stop
       end
     end
+
+    context "support prvision with restored data" do
+
+      let(:mock_nats) { double("test_mock_nats") }
+      let(:klass) { double("subclass") }
+      let(:mock_instance_handle) {
+        {
+          :credentials => {
+            "name"     => "fake_instance",
+            "user"     => "fake_user",
+            "password" => "fake_pass",
+          }
+        }
+      }
+
+      def check(provisioner, node_count)
+        klass.should_receive(:create).exactly(node_count).times.and_return(an_instance_of(Integer))
+        provisioner.should_receive(:restore_backup_job).exactly(node_count).times.and_return(klass)
+        provisioner.should_receive(:get_job).exactly(node_count).times.and_return({})
+
+        provisioner.should_receive(:get_instance_handle).and_return(mock_instance_handle)
+
+        provisioner.nats = mock_nats
+        mock_nodes = {}
+        node_count.times do |i|
+          mock_nodes["node_#{i}"] = {
+            "id" => "node_#{i}",
+            "plan" => "free",
+            "available_capacity" => 200,
+            "capacity_unit" => 1,
+            "supported_versions" => ["1.0"],
+            "time" => Time.now.to_i
+          }
+        end
+        provisioner.nodes = mock_nodes
+
+        mock_nodes.keys.each do |name|
+          mock_nats.should_receive(:request).with("Test.provision.#{name}", an_instance_of(String))
+        end
+
+        mock_nats.should_receive(:publish).exactly(node_count).times
+        mock_nats.should_receive(:subscribe).with(/Test\.restore_backup/).and_return do |channel, &blk|
+          response = VCAP::Services::Internal::SimpleResponse.new
+          response.success = true
+
+          node_count.times { blk.call(response.encode, nil) }
+        end
+
+        # TODO finish the TODO in source file and set expectations here
+
+        properties = {
+          VCAP::Services::Internal::ProvisionArguments::BACKUP_ID => "fake_backup_id",
+          VCAP::Services::Internal::ProvisionArguments::ORIGINAL_SERVICE_ID => "fake_instance_id",
+        }
+
+        gateway = ProvisionerTests.create_gateway(provisioner)
+        service_id = gateway.send_provision_request(properties)
+        gateway.fire_provision_callback service_id
+
+        gateway.got_provision_response.should be_true
+        provisioner.provision_refs.keys.size.should eq(node_count)
+        provisioner.provision_refs.each {|k,v| v.should eq(0)}
+      end
+
+      it "for single node" do
+        EM.run do
+          provisioner = ProvisionerTests.create_provisioner(options)
+          check(provisioner, 1)
+          EM.stop
+        end
+      end
+
+      it "for multiple peers" do
+        EM.run do
+          opt = {
+            :peers_number => 3
+          }.merge!(options)
+          provisioner = ProvisionerTests.create_multipeers_provisioner(opt)
+          check(provisioner, 3)
+          EM.stop
+        end
+      end
+
+    end
   end
 end

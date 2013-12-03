@@ -162,7 +162,7 @@ class ProvisionerTests
       super
     end
 
-    def generate_recipes(service_id, plan_config, version, best_nodes)
+    def generate_recipes(service_id, plan_config, version, best_nodes, original_creds)
       node1 = best_nodes[0]
       config = {
         "service_id" => service_id,
@@ -176,8 +176,9 @@ class ProvisionerTests
           },
         ]
       }
+      name = (original_creds && original_creds["name"]) || service_id
       creds = {
-        "name" => service_id,
+        "name" => name,
         "node_id" => node1["id"]
       }
 
@@ -198,7 +199,7 @@ class ProvisionerTests
       @peers_number = opts[:peers_number] || 1
     end
 
-    def generate_recipes(service_id, plan_config, version, best_nodes)
+    def generate_recipes(service_id, plan_config, version, best_nodes, original_creds)
       node1 = best_nodes[0]
       config = {
         "service_id" => service_id,
@@ -213,8 +214,10 @@ class ProvisionerTests
           }
         end
       }
+
+      name = (original_creds && original_creds["name"]) || service_id
       creds = {
-        "name" => service_id,
+        "name" => name,
         "node_id" => node1["id"]
       }
 
@@ -280,11 +283,12 @@ class ProvisionerTests
       @bind_count = bind_count
     end
 
-    def send_provision_request
-      req = VCAP::Services::Api::GatewayProvisionRequest.new
+    def send_provision_request(properties = {})
+      req = VCAP::Services::Internal::GatewayProvisionRequest.new
       req.label = "#{ProvisionerTests::SERVICE_LABEL}"
       req.plan = "free"
       req.version = "1.0"
+      req.properties = properties
       @provisioner.provision_service(req, nil) do |res|
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']

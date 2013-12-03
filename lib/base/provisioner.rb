@@ -26,6 +26,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     super(options)
     @options = options
     @node_timeout = options[:node_timeout]
+    @restore_timeout = options[:restore_timeout] || 3600
     @nodes = {}
     @provision_refs = Hash.new(0)
     @instance_handles_CO = {}

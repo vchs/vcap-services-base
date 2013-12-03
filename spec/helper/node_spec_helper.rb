@@ -71,7 +71,7 @@ class NodeTests
       @announcement_invoked = true
       Hash.new
     end
-    def provision(plan, credential, version)
+    def provision(plan, credential, version, properties)
       sleep 4 # Provision takes 5 seconds to finish
       @mutex.synchronize do
         @provision_times += 1
@@ -147,10 +147,11 @@ class NodeTests
       req = Yajl::Encoder.encode({"plan" => plan})
       @nats.request("#{NodeTester::SERVICE_NAME}.discover", req) {|_| @got_announcement_by_plan = true }
     end
-    def send_provision_request
+    def send_provision_request(properties={})
       req = ProvisionRequest.new
       req.plan = "free"
       req.version = "1.0"
+      req.properties = properties
       @nats.request("#{NodeTester::SERVICE_NAME}.provision.#{NodeTester::ID}", req.encode) {
         @got_provision_response = true
       }
@@ -231,7 +232,7 @@ class NodeTests
     def nats=(mock_nats)
       @node_nats = mock_nats
     end
-    def provision(plan, credential, version)
+    def provision(plan, credential, version, properties)
       @provision_invoked = true
       raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
     end
