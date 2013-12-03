@@ -70,8 +70,10 @@ class VCAP::Services::Base::Warden::Service
   def prepare_filesystem(max_size, opts={})
     if base_dir?
       self.class.sh "umount #{base_dir}", :raise => false if self.class.quota
-      logger.warn("Service #{self[:service_id]} base_dir:#{base_dir} already exists, deleting it")
-      FileUtils.rm_rf(base_dir)
+      unless opts[:remove_base_dir] == false
+        logger.warn("Service #{self[:service_id]} base_dir:#{base_dir} already exists, deleting it")
+        FileUtils.rm_rf(base_dir)
+      end
     end
     if log_dir?
       logger.warn("Service #{self[:service_id]} log_dir:#{log_dir} already exists, deleting it")

@@ -26,6 +26,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     super(options)
     @options = options
     @node_timeout = options[:node_timeout]
+    @restore_timeout = options[:restore_timeout] || 3600
     @nodes = {}
     @provision_refs = Hash.new(0)
     @instance_handles_CO = {}
@@ -230,7 +231,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     response.bindings_list.each do |bind|
       user = bind["username"] || bind["user"]
       next unless user
-      key = bind["name"] + user
+      key = bind["service_id"] + user
       @staging_orphan_bindings[nid] << bind unless @binding_handles_CO.has_key?(key)
     end
     oi_count = @staging_orphan_instances.values.reduce(0) { |m, v| m += v.count }
@@ -273,7 +274,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       ob_list.each do |ob|
         user = ob["username"] || ob["user"]
         next unless user
-        key = ob["name"] + user
+        key = ob["service_id"] + user
         @final_orphan_bindings[nid] << ob unless bin_handles.has_key?(key)
       end
     end

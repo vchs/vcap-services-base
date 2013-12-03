@@ -118,7 +118,7 @@ module VCAP::Services::Base::AsyncJob
           dir = connection.directories.get(dir_name)
           file = dir.nil? ? nil : dir.files.get(file_name)
           File.open(local_path, "w") { |f| f.write(file.body) } if file && local_path
-          @logger.info("Get backup from blobstore dir: #{dir_name} file name #{file_name} and save it to #{local_path}") if @logger
+          @logger.info("Get backup from blobstore dir: #{dir_name} file name #{file_name} #{"and save it to #{local_path}" if local_path}") if @logger
           file
         end
 

@@ -40,7 +40,7 @@ module VCAP::Services::Base::ProvisionerV2
         internal_handle = { handles[0]['gateway_name'] => handles[0] }
         update_binding_handles(internal_handle)
       else
-        internal_handle = { handles[0]['credentials']['name'] => handles[0] }
+        internal_handle = { handles[0]['credentials']['service_id'] => handles[0] }
         update_instance_handles(internal_handle)
       end
     else
@@ -62,7 +62,7 @@ module VCAP::Services::Base::ProvisionerV2
         # of the 'gateway_data' field as in ccdb handle, this is for a easy management/translation
         # between gateway v1 and v2 provisioner code
         :configuration => handle['gateway_data'] || handle['configuration'],
-        :gateway_name  => handle['credentials']['name'],
+        :gateway_name  => handle['credentials']['service_id'],
       }
     end
   end
@@ -120,7 +120,7 @@ module VCAP::Services::Base::ProvisionerV2
     handles[1].each do |binding_id, binding_handle|
       user = binding_handle["credentials"]["username"] || binding_handle["credentials"]["user"]
       next unless user
-      key = binding_handle["credentials"]["name"] + user
+      key = binding_handle["credentials"]["service_id"] + user
       binding_handles[key] = nil
     end
     [instance_handles, binding_handles]
@@ -185,7 +185,7 @@ module VCAP::Services::Base::ProvisionerV2
   end
 
   def delete_instance_handle(instance_handle)
-    @service_instances.delete(instance_handle[:credentials]["name"])
+    @service_instances.delete(instance_handle[:credentials]["service_id"])
   end
 
   def delete_binding_handle(binding_handle)
@@ -195,7 +195,7 @@ module VCAP::Services::Base::ProvisionerV2
   def find_instance_bindings(instance_id)
     binding_handles = []
     @service_bindings.each do |_, handle|
-      binding_handles << handle if handle[:credentials]["name"] == instance_id
+      binding_handles << handle if handle[:credentials]["service_id"] == instance_id
     end
     binding_handles
   end

@@ -96,14 +96,15 @@ TEST_CHECK_HANDLES =
       "plan" => "free"
     },
     "credentials"   => {
-      "name"     => "20".ljust(36, "I"),
-      "hostname" => "127.0.0.1",
-      "host"     => "127.0.0.1",
-      "port"     => 3306,
-      "user"     => "umLImcKDtRtID",
-      "username" => "umLImcKDtRtID",
-      "password" => "p1ZivmGDSJXSC",
-      "node_id"  => "node-2"
+      "name"       => "20".ljust(36, "I"),
+      "hostname"   => "127.0.0.1",
+      "host"       => "127.0.0.1",
+      "port"       => 3306,
+      "user"       => "umLImcKDtRtID",
+      "username"   => "umLImcKDtRtID",
+      "password"   => "p1ZivmGDSJXSC",
+      "node_id"    => "node-2",
+      "service_id" => "20".ljust(36, "I"),
     }
   },
   {
@@ -112,14 +113,15 @@ TEST_CHECK_HANDLES =
       "plan" => "free"
     },
     "credentials"   => {
-      "name"     => "30".ljust(36, "I"),
-      "hostname" => "127.0.0.1",
-      "host"     => "127.0.0.1",
-      "port"     => 3306,
-      "user"     => "umLImcKDtRtIu",
-      "username" => "umLImcKDtRtIu",
-      "password" => "p1ZivmGDSJXSC",
-      "node_id"  => "node-3"
+      "name"       => "30".ljust(36, "I"),
+      "hostname"   => "127.0.0.1",
+      "host"       => "127.0.0.1",
+      "port"       => 3306,
+      "user"       => "umLImcKDtRtIu",
+      "username"   => "umLImcKDtRtIu",
+      "password"   => "p1ZivmGDSJXSC",
+      "node_id"    => "node-3",
+      "service_id" => "30".ljust(36, "I"),
     }
   },
   {
@@ -128,14 +130,15 @@ TEST_CHECK_HANDLES =
       "plan" => "free"
     },
     "credentials"   => {
-      "name"     => "id_for_other_node_ins",
-      "hostname" => "127.0.0.2",
-      "host"     => "127.0.0.2",
-      "port"     => 3306,
-      "user"     => "ffffxWPUcNxS4",
-      "username" => "ffffxWPUcNxS4",
-      "password" => "ffffg73QpVDSV",
-      "node_id"  => "node-x"
+      "name"       => "id_for_other_node_ins",
+      "hostname"   => "127.0.0.2",
+      "host"       => "127.0.0.2",
+      "port"       => 3306,
+      "user"       => "ffffxWPUcNxS4",
+      "username"   => "ffffxWPUcNxS4",
+      "password"   => "ffffg73QpVDSV",
+      "node_id"    => "node-x",
+      "service_id" => "id_for_other_node_ins",
     }
   },
   {
@@ -147,14 +150,15 @@ TEST_CHECK_HANDLES =
       }
     },
     "credentials"   => {
-      "name"     => "20".ljust(36, "I"),
-      "hostname" => "127.0.0.1",
-      "host"     => "127.0.0.1",
-      "port"     => 1,
-      "db"       => "db2",
-      "user"     => "20".ljust(18, "U"),
-      "username" => "20".ljust(18, "U"),
-      "password" => "ff9bMF25hwtlS"
+      "name"       => "20".ljust(36, "I"),
+      "hostname"   => "127.0.0.1",
+      "host"       => "127.0.0.1",
+      "port"       => 1,
+      "db"         => "db2",
+      "user"       => "20".ljust(18, "U"),
+      "username"   => "20".ljust(18, "U"),
+      "password"   => "ff9bMF25hwtlS",
+      "service_id" => "20".ljust(36, "I"),
     }
   },
   {
@@ -166,14 +170,15 @@ TEST_CHECK_HANDLES =
       }
     },
     "credentials"   => {
-      "name"     => "30".ljust(36, "I"),
-      "hostname" => "127.0.0.1",
-      "host"     => "127.0.0.1",
-      "port"     => 1,
-      "db"       => "db3",
-      "user"     => "30".ljust(18, "U"),
-      "username" => "30".ljust(18, "U"),
-      "password" => "pl9bMF25hwtlS"
+      "name"       => "30".ljust(36, "I"),
+      "hostname"   => "127.0.0.1",
+      "host"       => "127.0.0.1",
+      "port"       => 1,
+      "db"         => "db3",
+      "user"       => "30".ljust(18, "U"),
+      "username"   => "30".ljust(18, "U"),
+      "password"   => "pl9bMF25hwtlS",
+      "service_id" => "30".ljust(36, "I"),
     }
   },
   {
@@ -185,13 +190,14 @@ TEST_CHECK_HANDLES =
       }
     },
     "credentials"   => {
-      "name"     => "id_for_other_node_ins",
-      "hostname" => "127.0.0.2",
-      "host"     => "127.0.0.2",
-      "port"     => 3306,
-      "user"     => "username_for_other_node_binding",
-      "username" => "username_for_other_node_binding",
-      "password" => "ffffntBqZojMo"
+      "name"       => "id_for_other_node_ins",
+      "hostname"   => "127.0.0.2",
+      "host"       => "127.0.0.2",
+      "port"       => 3306,
+      "user"       => "username_for_other_node_binding",
+      "username"   => "username_for_other_node_binding",
+      "password"   => "ffffntBqZojMo",
+      "service_id" => "id_for_other_node_ins",
     }
   }
 ]
