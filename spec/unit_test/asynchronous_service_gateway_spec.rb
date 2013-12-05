@@ -81,7 +81,7 @@ describe AsyncGatewayTests do
     gateway = nil
     EM.run do
       Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller; cc.start }
-      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway; gateway.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway("scv1"); gateway.start }
       Do.at(2) { gateway.send_create_resource_request }
       Do.at(3) { cc.stop; gateway.stop; EM.stop }
     end

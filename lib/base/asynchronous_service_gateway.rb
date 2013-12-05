@@ -44,13 +44,22 @@ module VCAP::Services
       @cc_api_version = opts[:cc_api_version] || "v1"
       if @cc_api_version == "v1"
         require 'catalog_manager_v1'
+        require 'cc_message_encoder_decoder'
+
         @catalog_manager = VCAP::Services::CatalogManagerV1.new(opts)
+        @message_encoder_decoder = VCAP::Services::CCMessageEncoderDecoder.new
       elsif @cc_api_version == "v2"
         require 'catalog_manager_v2'
+        require 'cc_message_encoder_decoder'
+
         @catalog_manager = VCAP::Services::CatalogManagerV2.new(opts)
+        @message_encoder_decoder = VCAP::Services::CCMessageEncoderDecoder.new
       elsif @cc_api_version == "scv1"
         require 'services_controller_client/catalog_manager_sc_v1'
+        require 'services_controller_client/sc_message_encoder_decoder'
+
         @catalog_manager = VCAP::Services::ServicesControllerClient::SCCatalogManagerV1.new(opts)
+        @message_encoder_decoder = VCAP::Services::ServicesControllerClient::SCMessageEncoderDecoder.new
       else
         raise "Unknown cc_api_version: #{@cc_api_version}"
       end
@@ -132,7 +141,7 @@ module VCAP::Services
     # Create custom resource
     post '/gateway/v1/resources/:resource_name' do
       op_name = "create_#{params['resource_name']}"
-      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_perform_request(request_body)
       req.args["operation"] = op_name
 
       unless @custom_resource_manager
@@ -149,7 +158,7 @@ module VCAP::Services
     # Read custom resource
     get '/gateway/v1/resources/:resource_name/:resource_id' do
       op_name = "get_#{params['resource_name']}"
-      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_perform_request(request_body)
       req.args["operation"] = op_name
 
       unless @custom_resource_manager
@@ -166,7 +175,7 @@ module VCAP::Services
     # Update custom resource
     put '/gateway/v1/resources/:resource_name/:resource_id' do
       op_name = "update_#{params['resource_name']}"
-      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_perform_request(request_body)
       req.args["operation"] = op_name
 
       unless @custom_resource_manager
@@ -183,7 +192,7 @@ module VCAP::Services
     # Delete custom resource
     delete '/gateway/v1/resources/:resource_name/:resource_id' do
       op_name = "delete_#{params['resource_name']}"
-      req = VCAP::Services::Internal::PerformOperationRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_perform_request(request_body)
       req.args["operation"] = op_name
 
       unless @custom_resource_manager
@@ -202,10 +211,11 @@ module VCAP::Services
     # Provisions an instance of the service
     #
     post '/gateway/v1/configurations' do
-      req = VCAP::Services::Api::GatewayProvisionRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_provision_request(request_body)
+
       @logger.debug("Provision request for unique_id=#{req.unique_id}")
 
-      plan_unique_ids = service.fetch(:plans).values.map {|p| p.fetch(:unique_id) }
+      plan_unique_ids = service.fetch(:plans).values.map { |p| p.fetch(:unique_id) }
 
       unless plan_unique_ids.include?(req.unique_id)
         error_msg = ServiceError.new(ServiceError::UNKNOWN_PLAN_UNIQUE_ID).to_hash
@@ -214,7 +224,7 @@ module VCAP::Services
 
       @provisioner.provision_service(req) do |msg|
         if msg['success']
-          async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
+          async_reply(@message_encoder_decoder.encode_provision_response(msg['response']))
         else
           async_reply_error(msg['response'])
         end
@@ -242,12 +252,12 @@ module VCAP::Services
     post '/gateway/v1/configurations/:service_id/handles' do
       logger.info("Binding request for service=#{params['service_id']}")
 
-      req = VCAP::Services::Api::GatewayBindRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_bind_request(request_body)
       logger.debug("Binding options: #{req.binding_options.inspect}")
 
       @provisioner.bind_instance(req.service_id, req.binding_options) do |msg|
         if msg['success']
-          async_reply(VCAP::Services::Api::GatewayHandleResponse.new(msg['response']).encode)
+          async_reply(@message_encoder_decoder.encode_bind_response(msg['response']))
         else
           async_reply_error(msg['response'])
         end
@@ -260,7 +270,7 @@ module VCAP::Services
     delete '/gateway/v1/configurations/:service_id/handles/:handle_id' do
       logger.info("Unbind request for service_id={params['service_id']} handle_id=#{params['handle_id']}")
 
-      req = VCAP::Services::Api::GatewayUnbindRequest.decode(request_body)
+      req = @message_encoder_decoder.decode_unbind_request(request_body)
 
       @provisioner.unbind_instance(req.service_id, req.handle_id, req.binding_options) do |msg|
         if msg['success']
@@ -328,14 +338,14 @@ module VCAP::Services
       def update_service_handle(handle, &cb)
         f = Fiber.new do
           @catalog_manager.update_handle_in_cc(
-            service[:label],
-            handle,
-            lambda {
-              # Update local array in provisioner
-              @provisioner.update_handles([handle])
-              cb.call(true) if cb
-            },
-            lambda { cb.call(false) if cb }
+              service[:label],
+              handle,
+              lambda {
+                # Update local array in provisioner
+                @provisioner.update_handles([handle])
+                cb.call(true) if cb
+              },
+              lambda { cb.call(false) if cb }
           )
         end
         f.resume
@@ -344,18 +354,18 @@ module VCAP::Services
       # Lets the cloud controller know we're alive and where it can find us
       def send_heartbeat
         @catalog_manager.update_catalog(
-          true,
-          lambda { return get_current_catalog },
-          nil
+            true,
+            lambda { return get_current_catalog },
+            nil
         )
       end
 
       # Lets the cloud controller know that we're going away
       def send_deactivation_notice(stop_event_loop=true)
         @catalog_manager.update_catalog(
-          false,
-          lambda { return get_current_catalog },
-          lambda { event_machine.stop if stop_event_loop }
+            false,
+            lambda { return get_current_catalog },
+            lambda { event_machine.stop if stop_event_loop }
         )
       end
 
