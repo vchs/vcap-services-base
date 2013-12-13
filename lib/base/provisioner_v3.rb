@@ -187,6 +187,10 @@ module VCAP::Services::Base::ProvisionerV3
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     plan = request.plan || "free"
     version = request.version
+    credentials = {}
+    if request.respond_to?(:credentials)
+      credentials = request.credentials || raise("Credentials not specified")
+    end
 
     plan_nodes = @nodes.select{ |_, node| node["plan"] == plan}.values
 
@@ -216,16 +220,18 @@ module VCAP::Services::Base::ProvisionerV3
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config },version, best_nodes)
+          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, credentials)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
           @logger.info("Provision recipes for #{service_id}: #{recipes.inspect}")
+
+          # NOTE: These are store in SC-DB so these credentials DO_NOT contain passwords or such information
           instance_credentials = recipes.credentials
           configuration = recipes.configuration
           peers = configuration["peers"]
           peers.each do |peer|
-            creds = peer["credentials"]
+            creds = peer["credentials"] # These credentials are for node and instance so these can contain password
             node_id = creds["node_id"]
             prov_req = ProvisionRequest.new
             prov_req.plan = plan
@@ -265,9 +271,9 @@ module VCAP::Services::Base::ProvisionerV3
             begin
               @logger.info("Successfully provision response from HM for #{service_id}")
               EM.cancel_timer(timer)
-              svc = { configuration:  configuration,
+              svc = { configuration:  configuration,  # TODO: Remove node credentials from here
                       service_id:     service_id,
-                      credentials:    instance_credentials
+                      credentials:    instance_credentials # THIS contains stored credentials
               }
               @logger.debug("Provisioned: #{svc.inspect}")
               add_instance_handle(svc)
