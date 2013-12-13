@@ -190,6 +190,10 @@ module VCAP::Services::Base::ProvisionerV3
     @logger.debug("[#{service_description}] Attempting to provision instance (request=#{request.extract})")
     plan = request.plan || "free"
     version = request.version
+    credentials = {}
+    if request.respond_to?(:credentials)
+      credentials = request.credentials || raise("Credentials not specified")
+    end
 
     is_restoring = false
     if request.respond_to? :properties
@@ -229,6 +233,8 @@ module VCAP::Services::Base::ProvisionerV3
             raise "original instance #{original_service_id} not found" unless original_instance_handle
             original_creds = original_instance_handle[:credentials]
             raise "credentials for original instance #{original_service_id} not found" unless original_creds
+
+            credentials.merge!(original_creds) unless original_creds
           end
 
           # Subclass should define generate_recipes and return an instance of
@@ -237,20 +243,24 @@ module VCAP::Services::Base::ProvisionerV3
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, original_creds)
+          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, credentials)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
           @logger.info("Provision recipes for #{service_id}: #{recipes.inspect}")
+
+          # NOTE: These are store in SC-DB so these credentials DO_NOT contain passwords or such information
+          # Ideally, generate_recipes function should return the right value already
           instance_credentials = recipes.credentials
-          configuration = recipes.configuration
+
+          configuration = recipes.configuration # TODO: strip_out_credentials_from_config(recipes.configuration)
           peers = configuration["peers"]
           provision_response_status = is_restoring ?
             VCAP::Services::Internal::ServiceInstanceStatus::RESTORING :
             VCAP::Services::Internal::ServiceInstanceStatus::READY
-          svc = { configuration:  configuration,
+          svc = { configuration:  configuration,   # *TODO*: MUST Remove node credentials from here
                   service_id:     service_id,
-                  credentials:    instance_credentials,
+                  credentials:    instance_credentials, # THIS contains stored credentials (i.e. should not contain password)
                   status:         provision_response_status
           }
 
@@ -262,7 +272,7 @@ module VCAP::Services::Base::ProvisionerV3
 
           provision_blk = Proc.new do |callback|
             peers.each do |peer|
-              creds = peer["credentials"]
+              creds = peer["credentials"] # These credentials are for node and instance so these contain password
               node_id = creds["node_id"]
               prov_req = ProvisionRequest.new
               prov_req.plan = plan
