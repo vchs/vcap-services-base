@@ -141,6 +141,58 @@ describe ProvisionerTests do
       provisioner.get_all_binding_handles.size.should == 1
     end
 
+    it "should handle error in update_bind (#{version})" do
+      provisioner = nil
+      gateway = nil
+      node = nil
+      EM.run do
+        Do.at(0) do
+          options = {:provisioner_version => version}
+          provisioner = ProvisionerTests.create_provisioner(options)
+        end
+        Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+        Do.at(3) do
+          ProvisionerTests.setup_fake_instance(gateway, provisioner, node)
+          ProvisionerTests.setup_fake_binding(gateway, provisioner, node)
+        end
+        Do.at(5) { gateway.send_update_bind_request }
+        Do.at(6) { EM.stop }
+      end
+      node.got_update_bind_request.should be_true
+      provisioner.get_all_instance_handles.size.should == 1
+      provisioner.get_all_binding_handles.size.should == 0
+      gateway.update_bind_response.should be_false
+      gateway.error_msg['status'].should == 500
+      gateway.error_msg['msg']['code'].should == 30500
+    end
+
+    it "should handle error in unbind (#{version})" do
+      provisioner = nil
+      gateway = nil
+      node = nil
+      EM.run do
+        Do.at(0) do
+          options = {:provisioner_version => version}
+          provisioner = ProvisionerTests.create_provisioner(options)
+        end
+        Do.at(1) { gateway = ProvisionerTests.create_error_gateway(provisioner) }
+        Do.at(2) { node = ProvisionerTests.create_error_node(1) }
+        Do.at(3) do
+          ProvisionerTests.setup_fake_instance(gateway, provisioner, node)
+          ProvisionerTests.setup_fake_binding(gateway, provisioner, node)
+        end
+        Do.at(5) { gateway.send_unbind_request }
+        Do.at(6) { EM.stop }
+      end
+      node.got_unbind_request.should be_true
+      provisioner.get_all_instance_handles.size.should == 1
+      provisioner.get_all_binding_handles.size.should == 0
+      gateway.unbind_response.should be_false
+      gateway.error_msg['status'].should == 500
+      gateway.error_msg['msg']['code'].should == 30500
+    end
+
     it "should support get instance id list" do
       provisioner = nil
       gateway = nil

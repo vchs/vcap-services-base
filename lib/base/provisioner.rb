@@ -319,12 +319,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   def unprovision_service(instance_id, &blk)
     @logger.debug("[#{service_description}] Unprovision service #{instance_id}")
     begin
-      svc = get_instance_handle(instance_id)
-      @logger.debug("[#{service_description}] Unprovision service #{instance_id} found instance: #{svc}")
-      raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
-
-      node_id = svc[:credentials]["node_id"]
-      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+      node_id, svc = find_node(instance_id)
 
       bindings = find_instance_bindings(instance_id)
       @logger.debug("[#{service_description}] Unprovisioning instance #{instance_id} from #{node_id}")
@@ -449,11 +444,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     @logger.debug("[#{service_description}] Attempting to bind to service #{instance_id}")
 
     begin
-      svc = get_instance_handle(instance_id)
-      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
-
-      node_id = svc[:credentials]["node_id"]
-      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+      node_id, svc = find_node(instance_id)
 
       @logger.debug("[#{service_description}] bind instance #{instance_id} from #{node_id}")
       #FIXME options = {} currently, should parse it in future.
@@ -507,17 +498,14 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     end
   end
 
+
   def unbind_instance(instance_id, binding_id, binding_options, &blk)
     @logger.debug("[#{service_description}] Attempting to unbind to service #{instance_id}")
     begin
-      svc = get_instance_handle(instance_id)
-      raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
+      node_id, svc = find_node(instance_id)
 
       handle = get_binding_handle(binding_id)
       raise ServiceError.new(ServiceError::NOT_FOUND, "binding_id #{binding_id}") if handle.nil?
-
-      node_id = svc[:credentials]["node_id"]
-      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
 
       @logger.debug("[#{service_description}] Unbind instance #{binding_id} from #{node_id}")
       request = UnbindRequest.new
@@ -547,6 +535,45 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
         blk.call(failure(e))
       else
         @logger.warn("Exception at unbind_instance #{e}")
+        blk.call(internal_fail)
+      end
+    end
+  end
+
+  def update_bind(instance_id, binding_id, binding_options, &blk)
+    @logger.debug("[#{service_description}] Attempting to update bind #{instance_id}")
+    begin
+      node_id, _ = find_node(instance_id)
+      handle = get_binding_handle(binding_id)
+      raise ServiceError.new(ServiceError::NOT_FOUND, "binding_id #{binding_id}") if handle.nil?
+
+      @logger.debug("[#{service_description}] Update Bind instance #{binding_id} from #{node_id}")
+      request = UpdateBindRequest.new
+      request.credentials = handle[:credentials]
+
+      subscription = nil
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      @node_nats.request( "#{service_name}.updatebind.#{node_id}",
+                              request.encode
+          ) do |msg|
+            #TODO: no need to have binding table now?? update_binding_handle(handle)
+            EM.cancel_timer(timer)
+            @node_nats.unsubscribe(subscription)
+            opts = SimpleResponse.decode(msg)
+            if opts.success
+              blk.call(success())
+            else
+              blk.call(wrap_error(opts))
+            end
+          end
+    rescue => e
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn("Exception at update_bind #{e}")
         blk.call(internal_fail)
       end
     end
@@ -691,7 +718,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     raise ServiceError.new(ServiceError::NOT_FOUND, "instance_id #{instance_id}") if svc.nil?
     node_id = svc[:credentials]["node_id"]
     raise "Cannot find node_id for #{instance_id}" if node_id.nil?
-    node_id
+    return node_id, svc
   end
 
   # node_score(node) -> number.  this base class provisions on the

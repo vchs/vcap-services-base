@@ -23,6 +23,10 @@ module VCAP
       def decode_unbind_request(body)
         VCAP::Services::Api::GatewayUnbindRequest.decode(body)
       end
+
+      def decode_update_bind_request(body)
+        VCAP::Services::Api::GatewayUpdateBindRequest.decode(body)
+      end
     end
   end
 end

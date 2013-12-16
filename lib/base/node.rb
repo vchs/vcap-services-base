@@ -50,7 +50,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
 
-    %w[provision unprovision bind unbind purge_orphan
+    %w[provision unprovision bind unbind update_bind purge_orphan
     ].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
@@ -185,6 +185,21 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     publish(reply, encode_success(response))
   rescue => e
     @logger.warn("Exception at on_bind #{e}")
+    publish(reply, encode_failure(response, e))
+  end
+
+  def on_update_bind(msg, reply)
+    @logger.debug("#{service_description}: Update bind request: #{msg} from #{reply}")
+    response = SimpleResponse.new
+    update_bind_req = UpdateBindRequest.decode(msg)
+    result = update_bind(update_bind_req.credentials)
+    if result
+      publish(reply, encode_success(response))
+    else
+      publish(reply, encode_failure(response))
+    end
+  rescue => e
+    @logger.warn("Exception at on_update_bind #{e}")
     publish(reply, encode_failure(response, e))
   end
 
@@ -404,6 +419,9 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
 
   # unbind(credentials)  --> void
   abstract :unbind
+
+  # update_bind(credentials)  --> void
+  abstract :update_bind
 
   # announcement() --> { any service-specific announcement details }
   abstract :announcement

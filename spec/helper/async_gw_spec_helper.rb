@@ -65,6 +65,7 @@ class AsyncGatewayTests
     attr_accessor :unprovision_http_code
     attr_accessor :bind_http_code
     attr_accessor :unbind_http_code
+    attr_accessor :update_bind_http_code
     attr_reader   :instances_http_code
     attr_reader   :purge_orphan_http_code
     attr_reader   :check_orphan_http_code
@@ -143,6 +144,7 @@ class AsyncGatewayTests
       @unprovision_http_code = 0
       @bind_http_code = 0
       @unbind_http_code = 0
+      @update_bind_http_code = 0
       @instances_http_code = 0
       @purge_orphan_http_code = 0
       @check_orphan_http_code = 0
@@ -278,6 +280,23 @@ class AsyncGatewayTests
       }
     end
 
+    def send_update_bind_request(service_id = nil, bind_id = nil)
+      service_id ||= @last_service_id
+      bind_id ||= @last_bind_id
+      msg = Yajl::Encoder.encode({
+                                     :service_id => service_id,
+                                     :handle_id => bind_id,
+                                     :binding_options => {}
+                                 })
+      http = EM::HttpRequest.new("http://localhost:#{GW_PORT}/gateway/v1/configurations/#{service_id}/handles/#{bind_id}").put(gen_req(msg))
+      http.callback {
+        @update_bind_http_code = http.response_header.status
+      }
+      http.errback {
+        @update_bind_http_code = -1
+      }
+    end
+
     def send_purge_orphan_request
       msg = Yajl::Encoder.encode({
         :orphan_instances => TEST_PURGE_INS_HASH,
@@ -350,6 +369,7 @@ class AsyncGatewayTests
     attr_accessor :got_unprovision_request
     attr_accessor :got_bind_request
     attr_accessor :got_unbind_request
+    attr_accessor :got_update_bind_request
     attr_accessor :got_instances_request
     attr_reader   :purge_orphan_invoked
     attr_reader   :check_orphan_invoked
@@ -362,6 +382,7 @@ class AsyncGatewayTests
       @got_unprovision_request = false
       @got_bind_request = false
       @got_unbind_request = false
+      @got_update_bind_request = false
       @got_instances_request = false
       @purge_orphan_invoked = false
       @check_orphan_invoked = false
@@ -405,6 +426,11 @@ class AsyncGatewayTests
       blk.call(success(true))
     end
 
+    def update_bind(instance_id, handle_id, binding_options, &blk)
+      @update_bind_request = true
+      blk.call(success(true))
+    end
+
     def get_instance_id_list(node_id, &blk)
       @got_instances_request = true
       blk.call(success(true))
@@ -444,6 +470,11 @@ class AsyncGatewayTests
 
     def unbind_instance(instance_id, handle_id, binding_options, &blk)
       @got_unbind_request = true
+      blk.call(internal_fail)
+    end
+
+    def update_bind(instance_id, handle_id, binding_options, &blk)
+      @got_update_bind_request = true
       blk.call(internal_fail)
     end
 

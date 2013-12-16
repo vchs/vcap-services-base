@@ -282,6 +282,23 @@ module VCAP::Services
       async_mode
     end
 
+    # Unbinds a previously bound instance of the service
+    #
+    put '/gateway/v1/configurations/:service_id/handles/:handle_id' do
+      logger.info("Update bind request for service_id={params['service_id']} handle_id=#{params['handle_id']}")
+
+      req = @message_encoder_decoder.decode_update_bind_request(request_body)
+
+      @provisioner.update_bind(req.service_id, req.handle_id, req.binding_options) do |msg|
+        if msg['success']
+          async_reply
+        else
+          async_reply_error(msg['response'])
+        end
+      end
+      async_mode
+    end
+
     # Get Job details
     get "/gateway/v1/configurations/:service_id/jobs/:job_id" do
       service_id = params["service_id"]

@@ -249,6 +249,39 @@ describe NodeTests do
     provisioner.response.should =~ /Service unavailable/
   end
 
+  it "should support update bind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_node }
+      Do.at(1) { provisioner = NodeTests.create_provisioner }
+      Do.at(2) {
+        provisioner.send_update_bind_request
+        stop_event_machine_when { node.update_bind_invoked }
+      }
+    end
+    node.update_bind_invoked.should be_true
+  end
+
+  it "should handle error in update_bind" do
+    node = nil
+    provisioner = nil
+    EM.run do
+      # start node then provisioner
+      Do.at(0) { node = NodeTests.create_error_node }
+      Do.at(1) { provisioner = NodeTests.create_error_provisioner }
+      Do.at(2) {
+        provisioner.send_update_bind_request
+        stop_event_machine_when {
+          provisioner.response =~ /Service unavailable/ && node.update_bind_invoked
+        }
+      }
+    end
+    node.update_bind_invoked.should be_true
+    provisioner.response.should =~ /Service unavailable/
+  end
+
   it "should support check_orphan when node has massive instances" do
     node = nil
     provisioner = nil

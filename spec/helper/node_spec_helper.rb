@@ -24,6 +24,7 @@ class NodeTests
     attr_accessor :unprovision_invoked
     attr_accessor :bind_invoked
     attr_accessor :unbind_invoked
+    attr_accessor :update_bind_invoked
     attr_accessor :provision_times
     attr_reader   :unprovision_count
     attr_reader   :unbind_count
@@ -43,6 +44,7 @@ class NodeTests
       @unprovision_invoked = false
       @bind_invoked = false
       @unbind_invoked = false
+      @update_bind_invoked = false
       @provision_times = 0
       @mutex = Mutex.new
       @unprovision_count = 0
@@ -94,6 +96,10 @@ class NodeTests
       @unbind_invoked = true
       @mutex.synchronize{ @unbind_count += 1 }
     end
+    def update_bind(credentials)
+      @update_bind_invoked = true
+    end
+
     def varz_details
       @varz_invoked = true
       {}
@@ -197,6 +203,7 @@ class NodeTests
     attr_accessor :unprovision_invoked
     attr_accessor :bind_invoked
     attr_accessor :unbind_invoked
+    attr_accessor :update_bind_invoked
     attr_accessor :restore_invoked
     attr_accessor :disable_invoked
     attr_accessor :enable_invoked
@@ -215,6 +222,7 @@ class NodeTests
       @unprovision_invoked = false
       @bind_invoked = false
       @unbind_invoked = false
+      @update_bind_invoked = false
       @check_orphan_invoked = false
       @provision_times = 0
       @migration_nfs = "/tmp"
@@ -247,6 +255,11 @@ class NodeTests
       @unbind_invoked = true
       raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
     end
+    def update_bind(credentials)
+      @update_bind_invoked = true
+      raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
+    end
+
     def check_orphan(handles)
       @check_orphan_invoked = true
       raise ServiceError.new(ServiceError::SERVICE_UNAVAILABLE)
@@ -261,6 +274,7 @@ class NodeTests
     attr_accessor :got_unprovision_response
     attr_accessor :got_bind_response
     attr_accessor :got_unbind_response
+    attr_accessor :got_update_bind_response
     attr_accessor :response
     def initialize
       @got_announcement = false
@@ -268,6 +282,7 @@ class NodeTests
       @got_unprovision_response = false
       @got_bind_response = false
       @got_unbind_response = false
+      @got_update_bind_response = false
       @nats = NATS.connect(:uri => BaseTests::Options::NATS_URI) {
         @nats.subscribe("#{NodeTester::SERVICE_NAME}.announce") {
           @got_announcement = true
@@ -308,6 +323,14 @@ class NodeTests
       req.credentials = {}
       @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", req.encode) do |msg|
         @got_unbind_response = true
+        @response = msg
+      end
+    end
+    def send_update_bind_request
+      req = UpdateBindRequest.new
+      req.credentials = {}
+      @nats.request("#{NodeTester::SERVICE_NAME}.unbind.#{NodeTester::ID}", req.encode) do |msg|
+        @got_update_bind_response = true
         @response = msg
       end
     end

@@ -1,12 +1,12 @@
 module IntegrationHelpers
   def run_cmd(cmd, opts={})
+    opts[:debug] = true
     project_path = File.join(File.dirname(__FILE__), "../..")
     spawn_opts = {
       :chdir => project_path,
       :out => opts[:debug] ? :out : "/dev/null",
       :err => opts[:debug] ? :out : "/dev/null",
     }
-
     Process.spawn(cmd, spawn_opts).tap do |pid|
       if opts[:wait]
         Process.wait(pid)
@@ -52,7 +52,7 @@ RSpec.configure do |c|
   c.before(:all) do
     if !port_open?(4222)
       @nats_pid = run_cmd("nats-server -V -D")
-      remaining_sleeps = 10
+      remaining_sleeps = 40
       while !port_open?(4222)
         sleep(0.5)
         remaining_sleeps -= 1

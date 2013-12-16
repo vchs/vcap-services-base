@@ -179,62 +179,6 @@ describe ProvisionerTests do
       end
     end
 
-    it "should support bind" do
-      provisioner = nil
-      gateway = nil
-      mock_nats = nil
-      provision_request = ""
-      EM.run do
-        mock_nats = mock("test_mock_nats")
-        provisioner = ProvisionerTests.create_provisioner(options)
-        # assgin mock nats to provisioner
-        provisioner.nats = mock_nats
-        gateway = ProvisionerTests.create_gateway(provisioner)
-        # mock node to send provision & bind request
-        mock_nodes = {
-            "node-1" => {
-                "id" => "node-1",
-                "plan" => "free",
-                "available_capacity" => 200,
-                "capacity_unit" => 1,
-                "supported_versions" => ["1.0"],
-                "time" => Time.now.to_i
-            }
-        }
-        provisioner.nodes = mock_nodes
-
-        mock_nats.should_receive(:request).twice.with(any_args()).\
-        and_return { |*args, &cb|
-            provision_request = args[0]
-            if provision_request == "Test.provision.node-1"
-              response = VCAP::Services::Internal::ProvisionResponse.new
-              response.success = true
-              response.credentials = {
-                  "node_id" => "node-1",
-                  "name" => "b66e62e8-c87a-4adf-b08b-3cd30fcdbebb"
-              }
-            else
-              response = VCAP::Services::Internal::BindResponse.new
-              response.success = true
-              response.credentials = {
-                  "node_id" => "node-1",
-                  "name" => "b66e62e8-c87a-4adf-b08b-3cd30fcdbebb"
-              }
-            end
-            cb.call(response.encode)
-            "5"
-        }
-        mock_nats.should_receive(:unsubscribe).once.with(any_args())
-
-        service_id = gateway.send_provision_request
-        gateway.fire_provision_callback service_id
-
-        gateway.send_bind_request
-        gateway.got_bind_response.should be_true
-
-        EM.stop
-      end
-    end
 
     it "should not allow over provisioning when it is not configured so" do
       provisioner = nil
@@ -311,5 +255,289 @@ describe ProvisionerTests do
         EM.stop
       end
     end
+
+    it "should support bind" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      provision_request = ""
+      EM.run do
+        mock_nats = mock("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assgin mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_gateway(provisioner)
+        # mock node to send provision & bind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).twice.with(any_args()).\
+        and_return { |*args, &cb|
+          provision_request = args[0]
+          if provision_request == "Test.provision.node-1"
+            response = VCAP::Services::Internal::ProvisionResponse.new
+            response.success = true
+            response.credentials = {
+                "node_id" => "node-1",
+                "name" => "b66e62e8-c87a-4adf-b08b-3cd30fcdbebb"
+            }
+          else
+            #Bind
+            response = VCAP::Services::Internal::BindResponse.new
+            response.success = true
+            response.credentials = {
+                "node_id" => "node-1",
+                "name" => "b66e62e8-c87a-4adf-b08b-3cd30fcdbebb"
+            }
+          end
+          cb.call(response.encode)
+          "5"
+        }
+        mock_nats.should_receive(:unsubscribe).once.with(any_args())
+
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback service_id
+
+        gateway.send_bind_request
+        gateway.got_bind_response.should be_true
+
+        EM.stop
+      end
+    end
+
+    it "should handle error in bind" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      EM.run do
+        mock_nats = double("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assign mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_error_gateway(provisioner)
+        # mock node to send bind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).with(any_args).and_return { |*args, &cb|
+          response = VCAP::Services::Internal::BindResponse.new
+          response.success = false
+          response.error = ServiceError.new(ServiceError::INTERNAL_ERROR).\
+                                          to_hash
+          cb.call(response.encode)
+          "5"
+        }
+        mock_nats.should_receive(:unsubscribe).with(any_args())
+
+        ProvisionerTests.setup_fake_instance_by_id(gateway, provisioner, "node-1")
+
+        gateway.send_bind_request
+
+        gateway.bind_response.should be_false
+        gateway.error_msg['status'].should == 500
+        gateway.error_msg['msg']['code'].should == 30500
+
+        EM.stop
+      end
+    end
+
+    it "should support unbind" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      EM.run do
+        mock_nats = double("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assign mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_error_gateway(provisioner)
+        # mock node to send unbind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).with(any_args()).\
+        and_return { |*args, &cb|
+          response = VCAP::Services::Internal::SimpleResponse.new
+          response.success = true
+          cb.call(response.encode)
+          "5"
+
+        }
+        mock_nats.should_receive(:unsubscribe).with(any_args())
+
+        ProvisionerTests.setup_fake_instance_by_id(gateway, provisioner, "node-1")
+        ProvisionerTests.setup_fake_binding_by_id(gateway, provisioner, "node-1")
+        gateway.send_unbind_request
+
+        gateway.unbind_response.should be_true
+
+        EM.stop
+      end
+    end
+
+    it "should handle error in unbind" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      EM.run do
+        mock_nats = double("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assign mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_error_gateway(provisioner)
+        # mock node to send unbind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).with(any_args()).\
+        and_return { |*args, &cb|
+          response = VCAP::Services::Internal::SimpleResponse.new
+          response.success = false
+          response.error = ServiceError.new(ServiceError::INTERNAL_ERROR).\
+              to_hash
+          cb.call(response.encode)
+          "5"
+
+        }
+        mock_nats.should_receive(:unsubscribe).with(any_args())
+
+        ProvisionerTests.setup_fake_instance_by_id(gateway, provisioner, "node-1")
+        ProvisionerTests.setup_fake_binding_by_id(gateway, provisioner, "node-1")
+        gateway.send_unbind_request
+
+        gateway.unbind_response.should be_false
+        gateway.error_msg['status'].should == 500
+        gateway.error_msg['msg']['code'].should == 30500
+
+        EM.stop
+      end
+    end
+
+    it "should support update bind" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      EM.run do
+        mock_nats = double("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assign mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_error_gateway(provisioner)
+        # mock node to send unbind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).with(any_args()).\
+        and_return { |*args, &cb|
+          response = VCAP::Services::Internal::SimpleResponse.new
+          response.success = true
+
+          cb.call(response.encode)
+          "5"
+        }
+        mock_nats.should_receive(:unsubscribe).with(any_args())
+
+        ProvisionerTests.setup_fake_instance_by_id(gateway, provisioner, "node-1")
+        ProvisionerTests.setup_fake_binding_by_id(gateway, provisioner, "node-1")
+        gateway.send_update_bind_request
+
+        gateway.update_bind_response.should be_true
+        EM.stop
+      end
+    end
+
+
+    it "should handle error in update bind" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      EM.run do
+        mock_nats = double("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assign mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_error_gateway(provisioner)
+        # mock node to send unbind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).with(any_args()).\
+        and_return { |*args, &cb|
+          response = VCAP::Services::Internal::BindResponse.new
+          response.success = false
+          response.error = ServiceError.new(ServiceError::INTERNAL_ERROR).\
+                                       to_hash
+
+          cb.call(response.encode)
+          "5"
+        }
+        mock_nats.should_receive(:unsubscribe).with(any_args())
+
+        ProvisionerTests.setup_fake_instance_by_id(gateway, provisioner, "node-1")
+        ProvisionerTests.setup_fake_binding_by_id(gateway, provisioner, "node-1")
+        gateway.send_update_bind_request
+
+        gateway.update_bind_response.should be_false
+        gateway.error_msg['status'].should == 500
+        gateway.error_msg['msg']['code'].should == 30500
+
+        EM.stop
+      end
+    end
+
   end
 end

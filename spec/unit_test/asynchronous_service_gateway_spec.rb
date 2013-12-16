@@ -174,6 +174,22 @@ describe AsyncGatewayTests do
     gateway.unbind_http_code.should == 200
   end
 
+  it "should be able to update bind" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nice_gateway; gateway.start }
+      Do.at(2) { gateway.send_provision_request }
+      Do.at(3) { gateway.send_bind_request }
+      Do.at(4) { gateway.send_update_bind_request }
+      Do.at(5) { cc.stop; gateway.stop; EM.stop }
+    end
+    gateway.provision_http_code.should == 200
+    gateway.bind_http_code.should == 200
+    gateway.update_bind_http_code.should == 200
+  end
+
   it "should not serve request when handle is not fetched" do
     gateway = nil
     EM.run do
@@ -274,6 +290,18 @@ describe AsyncGatewayTests do
       Do.at(3) { cc.stop; gateway.stop; EM.stop }
     end
     gateway.unbind_http_code.should == 500
+  end
+
+  it "should be able to return error when update bind failed" do
+    cc = nil
+    gateway = nil
+    EM.run do
+      Do.at(0) { cc = AsyncGatewayTests.create_cloudcontroller; cc.start }
+      Do.at(1) { gateway = AsyncGatewayTests.create_nasty_gateway; gateway.start }
+      Do.at(2) { gateway.send_update_bind_request('s_id', 'b_id') }
+      Do.at(3) { cc.stop; gateway.stop; EM.stop }
+    end
+    gateway.update_bind_http_code.should == 500
   end
 
   it "should error when provisioning an unknown plan" do

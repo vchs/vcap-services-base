@@ -470,6 +470,55 @@ describe NodeTests do
     end
   end
 
+
+  it "should support update-bind" do
+    node = nil
+    mock_nats = nil
+    EM.run do
+      mock_nats = mock("test_mock_nats")
+      node = NodeTests.create_node
+      # assign mock nats to node
+      node.nats = mock_nats
+
+      mock_nats.should_receive(:publish).with(any_args())
+
+      req = VCAP::Services::Internal::UpdateBindRequest.new
+      req.credentials = {}
+      node.on_update_bind(req.encode, nil)
+
+      node.update_bind_invoked.should be_true
+
+      EM.stop
+    end
+  end
+
+  it "should handle error in update-bind" do
+    node = nil
+    mock_nats = nil
+    response = nil
+    EM.run do
+      mock_nats = mock("test_mock_nats")
+      node = NodeTests.create_error_node
+      # assign mock nats to node
+      node.nats = mock_nats
+
+      mock_nats.should_receive(:publish).with(any_args()).and_return { |*args|
+        response = VCAP::Services::Internal::SimpleResponse.decode(args[1])
+      }
+
+      req = VCAP::Services::Internal::UpdateBindRequest.new
+      req.credentials = {}
+      node.on_update_bind(req.encode, nil)
+
+      node.update_bind_invoked.should be_true
+      response.success.should be_false
+      response.error["status"].should == 503
+      response.error["msg"]["code"].should == 30600
+
+      EM.stop
+    end
+  end
+
   it "should support check_orphan when no handles" do
     node = nil
     mock_nats = nil

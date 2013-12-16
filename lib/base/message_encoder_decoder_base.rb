@@ -31,6 +31,11 @@ module VCAP
       def decode_unbind_request(body)
         raise "Unsupported Operation"
       end
+
+      # Update Bind request
+      def decode_update_bind_request(body)
+        raise "Unsupported Operation"
+      end
     end
   end
 end
