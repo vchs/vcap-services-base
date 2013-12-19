@@ -289,7 +289,7 @@ class ProvisionerTests
       req.plan = "free"
       req.version = "1.0"
       req.properties = properties
-      @provisioner.provision_service(req, nil) do |res|
+      @provisioner.provision_service(req) do |res|
         @instance_id = res['response'][:service_id]
         @got_provision_response = res['success']
       end
