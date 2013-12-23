@@ -385,7 +385,7 @@ class AsyncGatewayTests
   end
 
   class NiceProvisioner < MockProvisioner
-    def provision_service(request, prov_handle=nil, &blk)
+    def provision_service(request, &blk)
       @got_provision_request = true
       blk.call(success({:configuration => {}, :service_id => SERV_ID, :credentials => {}}))
     end
@@ -427,7 +427,7 @@ class AsyncGatewayTests
   end
 
   class NastyProvisioner < MockProvisioner
-    def provision_service(request, prov_handle=nil, &blk)
+    def provision_service(request, &blk)
       @got_provision_request = true
       blk.call(internal_fail)
     end
@@ -470,14 +470,13 @@ class AsyncGatewayTests
       @timeout = timeout
     end
 
-    def provision_service(request, prov_handle=nil, &blk)
+    def provision_service(request, &blk)
       @got_provision_request = true
       EM.add_timer(@timeout) do
         blk.call(
           success({
             :configuration => {},
-            :service_id => SERV_ID,
-            :credentials => {}
+            :service_id => SERV_ID
             }
           )
         )
