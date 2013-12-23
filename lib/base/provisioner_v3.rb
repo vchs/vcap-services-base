@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2013 VMware, Inc.
 require 'base/provisioner_v2'
+require 'base/password_stripper'
 require 'vcap_services_messages/constants'
 
 module VCAP::Services::Base::ProvisionerV3
   include VCAP::Services::Base::ProvisionerV2
   include VCAP::Services::Internal
   include VCAP::Services::Base::Error
+  include VCAP::Services::Base::PasswordStripper
   include Before
 
   PA = VCAP::Services::Internal::ProvisionArguments
@@ -240,7 +242,9 @@ module VCAP::Services::Base::ProvisionerV3
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, original_creds)
+          recipes = generate_recipes(service_id, { plan.to_sym => plan_config },
+                                     version, best_nodes, original_creds,
+                                     request.respond_to?(:credentials) && request.credentials)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
@@ -404,6 +408,7 @@ module VCAP::Services::Base::ProvisionerV3
       begin
         @logger.info("Successfully provision response from HM for #{service_id}")
         EM.cancel_timer(timer)
+        svc = strip_password(svc)
         @logger.debug("Provisioned: #{svc.inspect}")
         add_instance_handle(svc)
         callback.call(success(svc))
@@ -522,3 +527,4 @@ module VCAP::Services::Base::ProvisionerV3
 
   before [:create_backup], :before_backup_apis
 end
+
