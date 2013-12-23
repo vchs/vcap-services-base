@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2009-2013 VMware, Inc.
 require 'base/provisioner_v2'
+require 'base/password_stripper'
 require 'vcap_services_messages/constants'
 
 module VCAP::Services::Base::ProvisionerV3
   include VCAP::Services::Base::ProvisionerV2
   include VCAP::Services::Internal
   include VCAP::Services::Base::Error
+  include VCAP::Services::Base::PasswordStripper
   include Before
 
   PA = VCAP::Services::Internal::ProvisionArguments
@@ -198,6 +200,8 @@ module VCAP::Services::Base::ProvisionerV3
       is_restoring = true if backup_id && original_service_id
       @logger.debug("Restoring previous instance #{original_service_id} from backup #{backup_id}") if is_restoring
     end
+    # Pre-check request.credentials' validness by calling merge_credentials
+    merge_credentials({}, request.respond_to?(:credentials) && request.credentials) unless is_restoring
 
     plan_nodes = @nodes.select{ |_, node| node["plan"] == plan}.values
 
@@ -233,6 +237,7 @@ module VCAP::Services::Base::ProvisionerV3
             raise "credentials for original instance #{original_service_id} not found" unless original_creds
           end
           @extra_properties[service_id] = {:is_restoring => is_restoring}
+          target_creds = merge_credentials(original_creds, request.respond_to?(:credentials) && request.credentials)
 
           # Subclass should define generate_recipes and return an instance of
           # VCAP::Services::Internal::ServiceRecipes.
@@ -240,7 +245,7 @@ module VCAP::Services::Base::ProvisionerV3
           # credentials as a opaque string.
           # recipes.configuration contains any data that need persistent when gateway restart
           # such as version, plan and peers topology for a given service instance.
-          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, original_creds)
+          recipes = generate_recipes(service_id, { plan.to_sym => plan_config }, version, best_nodes, target_creds)
           unless recipes.is_a? ServiceRecipes
             raise "Invalid response class: #{recipes.class}, requires #{ServiceRecipes.class}"
           end
@@ -404,6 +409,7 @@ module VCAP::Services::Base::ProvisionerV3
       begin
         @logger.info("Successfully provision response from HM for #{service_id}")
         EM.cancel_timer(timer)
+        svc = strip_password(svc)
         @logger.debug("Provisioned: #{svc.inspect}")
         add_instance_handle(svc)
         callback.call(success(svc))
@@ -514,6 +520,11 @@ module VCAP::Services::Base::ProvisionerV3
       yield node_id, creds
     end
   end
+  
+  def merge_credentials(original_creds, new_creds)
+    new_creds = new_creds && new_creds.is_a?(Hash) ? new_creds : {}
+    original_creds.merge(new_creds)
+  end
 
   def is_restoring?(service_id)
     @extra_properties.kind_of?(Hash) && @extra_properties[service_id] &&
@@ -522,3 +533,4 @@ module VCAP::Services::Base::ProvisionerV3
 
   before [:create_backup], :before_backup_apis
 end
+
