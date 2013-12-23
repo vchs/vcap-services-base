@@ -126,6 +126,7 @@ class ProvisionerTests
     attr_reader   :final_orphan_instances
     attr_reader   :final_orphan_bindings
     attr_reader   :provision_refs
+    attr_reader   :merge_credentials_invoked
 
     def initialize(options)
       super(options)
@@ -133,6 +134,7 @@ class ProvisionerTests
       extend ProvisionerV2MonkeyPatch if @provisioner_version == "v2"
       @varz_invoked = false
       @healthz_invoked = false
+      @merge_credentials_invoked = false
     end
 
     SERVICE_NAME = "Test"
@@ -162,7 +164,7 @@ class ProvisionerTests
       super
     end
 
-    def generate_recipes(service_id, plan_config, version, best_nodes, original_creds)
+    def generate_recipes(service_id, plan_config, version, best_nodes, target_creds)
       node1 = best_nodes[0]
       config = {
         "service_id" => service_id,
@@ -176,7 +178,7 @@ class ProvisionerTests
           },
         ]
       }
-      name = (original_creds && original_creds["name"]) || service_id
+      name = (target_creds && target_creds["name"]) || service_id
       creds = {
         "name" => name,
         "node_id" => node1["id"]
@@ -188,6 +190,11 @@ class ProvisionerTests
       })
 
       result
+    end
+
+    def merge_credentials(original_creds, user_specified_creds)
+      @merge_credentials_invoked = true
+      super(original_creds, user_specified_creds)
     end
   end
 
@@ -375,7 +382,7 @@ class ProvisionerTests
       req.label = "#{ProvisionerTests::SERVICE_LABEL}"
       req.plan = plan
       req.version = "1.0"
-      @provisioner.provision_service(req, nil) do |res|
+      @provisioner.provision_service(req) do |res|
         @provision_response = res['success']
         @error_msg = res['response']
       end
