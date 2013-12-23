@@ -166,31 +166,4 @@ describe "Warden Service test", :requires_warden do
     @instance.run
     @instance.running?.should be_true
   end
-
-  it "should run with disk quota enabled" do
-    @instance.delete
-    @instance.class.image_dir = "/tmp/warden_test"
-    @instance.class.quota = true
-    @instance.class.max_disk = 100
-    @instance = Wardenservice.create
-    @instance.image_file?.should be_true
-    @instance.loop_setup?.should be_true
-    @instance.run
-    @instance.running?.should be_true
-  end
-
-  it "should be able to resize loop file" do
-    @instance.delete
-    @instance.class.image_dir = "/tmp/warden_test"
-    @instance.class.quota = true
-    @instance.class.max_disk = 100
-    @instance = Wardenservice.create
-    @instance.need_loop_resize?.should be_false
-    @instance.class.max_disk = 200
-    @instance.need_loop_resize?.should be_true
-    @instance.loop_resize
-    @instance.loop_setup?.should be_true
-    @instance.run
-    @instance.running?.should be_true
-  end
 end
