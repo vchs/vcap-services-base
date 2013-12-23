@@ -162,7 +162,7 @@ class ProvisionerTests
       super
     end
 
-    def generate_recipes(service_id, plan_config, version, best_nodes, original_creds)
+    def generate_recipes(service_id, plan_config, version, best_nodes, opts)
       node1 = best_nodes[0]
       config = {
         "service_id" => service_id,
@@ -176,6 +176,7 @@ class ProvisionerTests
           },
         ]
       }
+      original_creds = opts["original_credentials"]
       name = (original_creds && original_creds["name"]) || service_id
       creds = {
         "name" => name,
@@ -189,6 +190,7 @@ class ProvisionerTests
 
       result
     end
+
   end
 
   class MultiPeerProvisionerTester < ProvisionerTester
@@ -199,7 +201,7 @@ class ProvisionerTests
       @peers_number = opts[:peers_number] || 1
     end
 
-    def generate_recipes(service_id, plan_config, version, best_nodes, original_creds)
+    def generate_recipes(service_id, plan_config, version, best_nodes, opts)
       node1 = best_nodes[0]
       config = {
         "service_id" => service_id,
@@ -214,7 +216,7 @@ class ProvisionerTests
           }
         end
       }
-
+      original_creds = opts["original_credentials"]
       name = (original_creds && original_creds["name"]) || service_id
       creds = {
         "name" => name,
@@ -375,7 +377,7 @@ class ProvisionerTests
       req.label = "#{ProvisionerTests::SERVICE_LABEL}"
       req.plan = plan
       req.version = "1.0"
-      @provisioner.provision_service(req, nil) do |res|
+      @provisioner.provision_service(req) do |res|
         @provision_response = res['success']
         @error_msg = res['response']
       end
