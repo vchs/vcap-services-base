@@ -373,7 +373,7 @@ class ProvisionerTests
       @bind_count = bind_count
     end
     def send_provision_request(plan="free")
-      req = VCAP::Services::Api::GatewayProvisionRequest.new
+      req = VCAP::Services::Internal::GatewayProvisionRequest.new
       req.label = "#{ProvisionerTests::SERVICE_LABEL}"
       req.plan = plan
       req.version = "1.0"
