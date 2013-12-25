@@ -361,6 +361,49 @@ module VCAP::Services::Base::ProvisionerV3
     end
   end
 
+  def update_credentials(instance_id, args, &blk)
+    @logger.debug("[#{service_description}] Attempting to update credentials #{instance_id}")
+
+    begin
+      svc = get_instance_handle(instance_id)
+      raise ServiceError.new(ServiceError::NOT_FOUND, instance_id) if svc.nil?
+
+      node_id = svc[:credentials]["node_id"]
+      raise "Cannot find node_id for #{instance_id}" if node_id.nil?
+
+      @logger.debug("[#{service_description}] update credentials for instance #{instance_id} from #{node_id}")
+      #FIXME options = {} currently, should parse it in future.
+      args['service_id'] = instance_id
+      request = PerformOperationRequest.new({:args => args})
+      subscription = nil
+      timer = EM.add_timer(@node_timeout) {
+        @node_nats.unsubscribe(subscription)
+        blk.call(timeout_fail)
+      }
+      subscription =
+          @node_nats.request( "#{service_name}.update_credentials.#{node_id}",
+                              request.encode
+          ) do |msg|
+            EM.cancel_timer(timer)
+            @node_nats.unsubscribe(subscription)
+            opts = SimpleResponse.decode(msg)
+            if opts.success
+              @logger.debug("[#{service_description}] Credential Updated")
+              blk.call(success())
+            else
+              blk.call(wrap_error(opts))
+            end
+          end
+    rescue => e
+      if e.instance_of? ServiceError
+        blk.call(failure(e))
+      else
+        @logger.warn("Exception at update_credential #{e}")
+        blk.call(internal_fail)
+      end
+    end
+  end
+
   def provision_on_node(svc, plan, version, callback)
     service_id = svc[:service_id]
     config = svc[:configuration]
