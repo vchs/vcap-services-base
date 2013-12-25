@@ -50,7 +50,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
 
-    %w[provision unprovision bind unbind purge_orphan
+    %w[provision unprovision update_credentials bind unbind purge_orphan
     ].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
@@ -164,6 +164,21 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     end
   rescue => e
     @logger.warn("Exception at on_unprovision #{e}")
+    publish(reply, encode_failure(response, e))
+  end
+
+  def on_update_credentials(msg, reply)
+    @logger.debug("#{service_description}: Update credential request: #{msg} from #{reply}")
+    response = SimpleResponse.new
+
+    timing_exec(@op_time_limit) do
+      args = PerformOperationRequest.decode(msg).args
+      update_credentials(args['service_id'], args['credentials'])
+      response
+    end
+    publish(reply, encode_success(response))
+  rescue => e
+    @logger.warn("Exception at on_update_credential #{e}")
     publish(reply, encode_failure(response, e))
   end
 

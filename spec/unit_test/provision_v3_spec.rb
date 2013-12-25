@@ -180,6 +180,63 @@ describe ProvisionerTests do
       end
     end
 
+    it "should support update credentials" do
+      provisioner = nil
+      gateway = nil
+      mock_nats = nil
+      provision_request = ""
+      EM.run do
+        mock_nats = mock("test_mock_nats")
+        provisioner = ProvisionerTests.create_provisioner(options)
+        # assgin mock nats to provisioner
+        provisioner.nats = mock_nats
+        gateway = ProvisionerTests.create_gateway(provisioner)
+        # mock node to send provision & bind request
+        mock_nodes = {
+            "node-1" => {
+                "id" => "node-1",
+                "plan" => "free",
+                "available_capacity" => 200,
+                "capacity_unit" => 1,
+                "supported_versions" => ["1.0"],
+                "time" => Time.now.to_i
+            }
+        }
+        provisioner.nodes = mock_nodes
+
+        mock_nats.should_receive(:request).twice.with(any_args()).\
+        and_return { |*args, &cb|
+          request = args[0]
+          if request == "Test.provision.node-1"
+            response = VCAP::Services::Internal::ProvisionResponse.new
+            response.success = true
+            response.credentials = {
+                "node_id" => "node-1",
+                "name" => "b66e62e8-c87a-4adf-b08b-3cd30fcdbebb"
+            }
+          elsif request == "Test.update_credentials.node-1"
+            response = VCAP::Services::Internal::SimpleResponse.new
+            response.success = true
+          end
+          cb.call(response.encode)
+          "5"
+        }
+        mock_nats.should_receive(:unsubscribe).once.with(any_args())
+
+        service_id = gateway.send_provision_request
+        gateway.fire_provision_callback service_id
+
+        update_credentials_succeed = false
+        provisioner.update_credentials(service_id, { 'credentials' => { "password" => "new_password" } } ) do |msg|
+          update_credentials_succeed = msg['success']
+        end
+
+        update_credentials_succeed.should be_true
+
+        EM.stop
+      end
+    end
+
     it "should support bind" do
       provisioner = nil
       gateway = nil
