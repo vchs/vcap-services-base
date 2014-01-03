@@ -154,14 +154,14 @@ module VCAP::Services::Base::AsyncJob
         LOCAL_BACKUP_PATH
       end
 
-      def success_response(bid, properties)
+      def success_response(properties)
         response = BackupJobResponse.new
         response.success = true
         response.properties = properties.merge({:status => "completed"})
         response.encode
       end
 
-      def failed_response(bid, properties, error_msg)
+      def failed_response(properties, error_msg)
         response = BackupJobResponse.new
         response.success = false
         response.properties = properties.merge({:status => "failed"})
