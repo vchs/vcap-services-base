@@ -533,6 +533,21 @@ module VCAP::Services::Base::ProvisionerV3
     false
   end
 
+  def delete_backup(service_id, backup_id, opts = {}, &blk)
+    @logger.debug("Delete backup job for service_id=#{service_id}")
+    job_id = delete_backup_job.create(:service_id          => service_id,
+                                      :backup_id           => backup_id,
+                                      :node_id             => find_backup_peer(service_id),
+                                      :metadata            => opts
+                                     )
+    job = get_job(job_id)
+    @logger.info("DeleteBackupJob created: #{job.inspect}")
+    blk.call(success(job))
+  rescue
+    @logger.error("DeleteBackupJob failed: #{e}")
+    blk.call(failure(e))
+  end
+
   def user_triggered_options(params)
     {}
   end
