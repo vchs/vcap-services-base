@@ -50,7 +50,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
 
-    %w[provision unprovision update_credentials bind unbind purge_orphan
+    %w[provision unprovision update_credentials bind unbind purge_orphan  config_update
     ].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
@@ -167,6 +167,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     publish(reply, encode_failure(response, e))
   end
 
+
   def on_update_credentials(msg, reply)
     @logger.debug("#{service_description}: Update credentials request: #{msg} from #{reply}")
     response = SimpleResponse.new
@@ -180,6 +181,21 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     publish(reply, encode_success(response))
   rescue => e
     @logger.warn("Exception at on_update_credentials #{e}")
+
+  def on_config_update(msg, reply)
+    @logger.debug("#{service_description}: Config update request: #{msg}.")
+    response = SimpleResponse.new
+    config_update_req = ConfigUpdate.decode(msg)
+    config_update = config_update_req.new_configs
+    config_update.each do |k,v|
+      eval  "@#{k} = #{v}"
+    end
+
+    publish(reply, encode_success(response))
+
+  rescue => e
+    @logger.warn("Exception at config update #{e}")
+
     publish(reply, encode_failure(response, e))
   end
 
