@@ -181,6 +181,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     publish(reply, encode_success(response))
   rescue => e
     @logger.warn("Exception at on_update_credentials #{e}")
+  end
 
   def on_config_update(msg, reply)
     @logger.debug("#{service_description}: Config update request: #{msg}.")
