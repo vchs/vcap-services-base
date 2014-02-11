@@ -1,17 +1,17 @@
 require 'base/service_error'
 require 'base/http_handler'
-require 'base/service_error'
+require 'base/auth_token_generator'
 
 class VCAP::Services::CustomResourceManager
 
   include VCAP::Services::Base::Error
+  include AuthTokenGenerator
 
   def initialize(opts)
     @logger = opts[:logger]
     @provisioner = opts[:provisioner]
     @node_timeout = opts[:node_timeout]
-    blk = lambda { "Basic #{Base64.strict_encode64(opts[:auth_key])}" }
-    @http_handler = HTTPHandler.new(opts, blk)
+    @http_handler = HTTPHandler.new(opts, sc_token_generator(opts))
     @node_nats = @provisioner.node_nats  # Used if gateway wishes to communicate over nats for custom operations
   end
 

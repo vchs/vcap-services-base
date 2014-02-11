@@ -51,7 +51,7 @@ describe HTTPHandler do
 
       EM.run_block do
         Fiber.new do
-          http_handler.cc_http_request({uri: path, head: "Lincoln", body: "sweet", method: :post}) { |http|}
+          http_handler.cc_http_request({uri: path, head: { key: "Lincoln"}, body: "sweet", method: :post}) { |http|}
         end.resume
       end
 
