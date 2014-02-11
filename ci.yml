@@ -1,0 +1,22 @@
+---
+nodes:
+  - name: base_spec
+    instances: 1
+    image: ubuntu-vcap-12.4.3-qemu
+    prepare:
+      commands:
+      - apt-get update
+      - >
+        apt-get install -y
+        ruby1.9.3
+        libcurl4-openssl-dev
+        libsqlite3-dev
+        quota
+      - gem install --no-rdoc --no-ri bundler
+    run:
+      commands:
+      - ./spec.sh
+    capture:
+      files:
+      - reports.tgz
+      - coverage.tgz
