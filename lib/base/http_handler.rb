@@ -13,10 +13,10 @@ class HTTPHandler
 
   def cc_http_request(args, &block)
     args[:uri] = "#{@cld_ctrl_uri}#{args[:uri]}"
-    args[:head] = cc_req_hdrs
     max_attempts = args[:max_attempts] || 2
     attempts = 0
     while true
+      args[:head] = (cc_req_hdrs || {}).merge(args[:head] || {})
       attempts += 1
       logger.debug("#{args[:method].upcase} - #{args[:uri]}")
       http = make_http_request(args)
