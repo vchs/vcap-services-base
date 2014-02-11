@@ -8,6 +8,7 @@ $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'base/base'
 require 'base/simple_aop'
 require 'base/job/async_job'
+require 'base/http_handler'
 require 'barrier'
 require 'vcap_services_messages/service_message'
 require 'securerandom'
@@ -40,6 +41,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     }
     @plan_mgmt = options[:plan_management] && options[:plan_management][:plans] || {}
     @instance_provision_callbacks = {}
+    @cc_http_handler = HTTPHandler.new_instance(options)
 
     provisioner_version = options[:provisioner_version] || 'v2'
     if provisioner_version == "v1"
