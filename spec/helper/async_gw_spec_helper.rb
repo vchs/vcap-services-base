@@ -121,7 +121,6 @@ class AsyncGatewayTests
         :logger => logger,
         :cc_api_version => cc_api_version,
         :auth_key =>"auth_key"
-
       }
       options[:cloud_controller_uri] = "http://invalid_uri" if cc_invalid
       if create_custom_resource_manager
