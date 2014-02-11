@@ -5,6 +5,7 @@ require 'uri'
 require 'services/api/const'
 require 'catalog_manager_base'
 require 'base/http_handler'
+require 'base/auth_token_generator'
 require 'base/services_controller_client/sc_service_advertiser'
 require 'base/services_controller_client/sc_multiple_page_getter'
 require 'base/services_controller_client/sc_service'
@@ -15,6 +16,8 @@ module VCAP
     module ServicesControllerClient
       class SCCatalogManagerV1 < VCAP::Services::CatalogManagerBase
         attr_reader :logger
+
+        include AuthTokenGenerator
 
         def initialize(opts)
           super(opts)
@@ -40,10 +43,8 @@ module VCAP
           @gateway_stats = {}
           @gateway_stats_lock = Mutex.new
           snapshot_and_reset_stats
-          @http_handler = HTTPHandler.new(
-            opts,
-            lambda{ "Basic #{Base64.strict_encode64(opts[:auth_key])}" }
-          )
+
+          @http_handler = HTTPHandler.new(opts, sc_token_generator(opts))
 
           @sc_req_hdrs = { 'Content-Type' => 'application/json' }
           @multiple_page_getter = VCAP::Services::ServicesControllerClient::MultiplePageGetter.new(
