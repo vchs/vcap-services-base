@@ -8,6 +8,7 @@ $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'base/base'
 require 'base/simple_aop'
 require 'base/job/async_job'
+require 'base/http_handler'
 require 'barrier'
 require 'vcap_services_messages/service_message'
 require 'securerandom'
@@ -52,6 +53,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
       @service_instances = {}
       @service_bindings = {}
     elsif provisioner_version == "v3"
+      @cc_http_handler = HTTPHandler.new_instance(options)
       require 'provisioner_v3'
       self.class.send(:include, VCAP::Services::Base::ProvisionerV3)
       @service_instances = {}

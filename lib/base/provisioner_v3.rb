@@ -197,6 +197,7 @@ module VCAP::Services::Base::ProvisionerV3
     if request.respond_to?(:properties) && request.properties.kind_of?(Hash)
       backup_id = request.properties[PA::BACKUP_ID]
       original_service_id = request.properties[PA::ORIGINAL_SERVICE_ID]
+      update_url = request.properties[PA::UPDATE_URL]
       is_restoring = true if backup_id && original_service_id
       @logger.debug("Restoring previous instance #{original_service_id} from backup #{backup_id}") if is_restoring
     end
@@ -267,7 +268,7 @@ module VCAP::Services::Base::ProvisionerV3
           end
 
           if is_restoring
-            trigger_restore(svc, plan, version, recipes, backup_id, original_service_id, blk)
+            trigger_restore(svc, plan, version, recipes, backup_id, original_service_id, update_url, blk)
           else
             provision_on_node(svc, plan, version, blk)
           end
@@ -292,7 +293,7 @@ module VCAP::Services::Base::ProvisionerV3
     blk.call(internal_fail)
   end
 
-  def trigger_restore(svc, plan, version, recipes, backup_id, original_service_id, blk)
+  def trigger_restore(svc, plan, version, recipes, backup_id, original_service_id, update_url, blk)
     service_id = svc[:service_id]
     peers = svc[:configuration]["peers"]
     restore_opts = user_triggered_options({:plan => plan, :service_version => version, :recipes => recipes})
@@ -313,13 +314,7 @@ module VCAP::Services::Base::ProvisionerV3
           if count == 0
             # TODO update instance status to "Ready"
             update_status_blk = Proc.new do |res|
-              if res["success"]
-                @logger.info("Successfully provision after restore for #{service_id}")
-                # update Instance status to ready
-              else
-                @logger.warn("Provision after restore failed for #{service_id}")
-                # update Instance status to failed
-              end
+              update_instance_status(update_url, res["success"])
             end
             provision_on_node(svc, plan, version, update_status_blk)
             @node_nats.unsubscribe(subscription) if subscription
@@ -351,7 +346,10 @@ module VCAP::Services::Base::ProvisionerV3
 
     if job_triggered
       @logger.info("Provision for restoring: #{svc.inspect}")
-      blk.call(success(svc))
+      #Properties is transient so need be removed
+      res = svc.deep_dup
+      res[:configuration].delete("properties")
+      blk.call(success(res))
     else
       @logger.warn("Provision for restoring failed because of error in restore job: #{svc.inspect}")
       @node_nats.unsubscribe(subscription) if subscription
@@ -450,6 +448,8 @@ module VCAP::Services::Base::ProvisionerV3
         @logger.info("Successfully provision response from HM for #{service_id}")
         EM.cancel_timer(timer)
         svc = strip_password(svc)
+        #Properties is transient so need be removed
+        svc[:configuration].delete("properties")
         @logger.debug("Provisioned: #{svc.inspect}")
         add_instance_handle(svc)
         callback.call(success(svc))
@@ -466,7 +466,62 @@ module VCAP::Services::Base::ProvisionerV3
     }
   end
 
-  def before_backup_apis service_id, *args, &blk
+  def update_instance_status(url, succeed)
+    if succeed
+      @logger.info("Changing status from RESTORING to READY for #{url}")
+      status = VCAP::Services::Internal::ServiceInstanceStatus::READY
+    else
+      @logger.warn("Changing status from RESTORING to FAILURE for #{url}")
+      status = VCAP::Services::Internal::ServiceInstanceStatus::FAILURE
+    end
+
+    instance_info = nil
+    etag = nil
+    f = Fiber.new do
+      @cc_http_handler.cc_http_request({ uri: url,
+                                      method: "get"}) do |http|
+        if !http.error
+          if (200..299) === http.response_header.status
+            etag = http.response_header.etag
+            @logger.info("Provisioner: Successfully retrieved old instance info: #{http.response}")
+            instance_info = JSON.parse(http.response)['resources'][0]['entity'].select { |k, v| !v.nil? } rescue nil
+          else
+            @logger.error("Provisioner:: Failed to retrieve old instance info - status=#{http.response_header.status}")
+          end
+        else
+          @logger.error("Provisioner:: Failed to retrieve old instance info: #{http.error}")
+        end
+
+      end
+      unless instance_info
+        @logger.error("Provisioner:: Failed to get old_value from #{url}.")
+        return
+      end
+      body = Yajl::Encoder.encode(instance_info.merge!(status: status))
+
+      #NO need to retry since I am the first one to change this instance info.
+      @cc_http_handler.cc_http_request(uri: url,
+                                  method: "put",
+                                  :head => {"If-Match" => etag.tr('"', '') },
+                                  body: body) do |http|
+        if !http.error
+          if (200..299) === http.response_header.status
+            @logger.info("Provisioner: Successfully updated instance info: #{JSON.parse(http.response)}")
+          else
+            @logger.error("Provisioner:: Failed to update instance info - status=#{http.response_header.status}")
+          end
+        else
+          @logger.error("Provisioner:: Failed to update instance info: #{http.error}")
+        end
+      end
+    end
+    f.resume
+  rescue => e
+    @logger.error("Error to update instance status")
+    @logger.error(e)
+  end
+
+  def before_backup_apis(service_id, *args, &blk)
     raise "service_id can't be nil" unless service_id
 
     svc = get_instance_handle(service_id)

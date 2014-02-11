@@ -13,7 +13,7 @@ class HTTPHandler
 
   def cc_http_request(args, &block)
     args[:uri] = "#{@cld_ctrl_uri}#{args[:uri]}"
-    args[:head] = cc_req_hdrs
+    args[:head] = (cc_req_hdrs || {}).merge(args[:head] || {})
     max_attempts = args[:max_attempts] || 2
     attempts = 0
     while true
@@ -57,6 +57,11 @@ class HTTPHandler
     end
 
     [svc, plans]
+  end
+
+
+  def self.new_instance(opts)
+    new(opts,lambda{ "Basic #{Base64.strict_encode64(opts[:auth_key])}" })
   end
 
   private

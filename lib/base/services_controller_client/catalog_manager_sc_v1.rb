@@ -40,10 +40,8 @@ module VCAP
           @gateway_stats = {}
           @gateway_stats_lock = Mutex.new
           snapshot_and_reset_stats
-          @http_handler = HTTPHandler.new(
-            opts,
-            lambda{ "Basic #{Base64.strict_encode64(opts[:auth_key])}" }
-          )
+
+          @http_handler = HTTPHandler.new_instance(opts)
 
           @sc_req_hdrs = { 'Content-Type' => 'application/json' }
           @multiple_page_getter = VCAP::Services::ServicesControllerClient::MultiplePageGetter.new(
