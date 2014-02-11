@@ -2,6 +2,7 @@ require 'uaa'
 
 class HTTPHandler
   HTTP_UNAUTHENTICATED_CODE = 401
+  HTTP_IF_MATCH_FAIL = 412
   attr_reader :logger
 
   def initialize(options, auth_token_generator = nil)
@@ -13,15 +14,15 @@ class HTTPHandler
 
   def cc_http_request(args, &block)
     args[:uri] = "#{@cld_ctrl_uri}#{args[:uri]}"
-    args[:head] = cc_req_hdrs
     max_attempts = args[:max_attempts] || 2
     attempts = 0
     while true
+      args[:head] = (cc_req_hdrs || {}).merge(args[:head] || {})
       attempts += 1
       logger.debug("#{args[:method].upcase} - #{args[:uri]}")
       http = make_http_request(args)
       if attempts < max_attempts && http.response_header.status == HTTP_UNAUTHENTICATED_CODE
-        @cc_req_hdrs = regenerate_http_header
+        @cc_req_hdrs = nil
       else
         block.call(http)
         return http
