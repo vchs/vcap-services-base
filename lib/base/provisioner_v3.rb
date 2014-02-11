@@ -499,7 +499,7 @@ module VCAP::Services::Base::ProvisionerV3
     }
     metadata
   rescue => e
-    @logger.warn("Failed to get snapshot_metadata #{e}.")
+    @logger.warn("Failed to get backup_metadata #{e}.")
   end
 
   def create_backup(service_id, backup_id, opts = {}, &blk)
@@ -514,7 +514,11 @@ module VCAP::Services::Base::ProvisionerV3
     blk.call(success(job))
   rescue => e
     @logger.error("CreateBackupJob failed: #{e}")
-    blk.call(failure(e))
+    if e.instance_of? ServiceError
+      blk.call(failure(e))
+    else
+      blk.call(internal_fail)
+    end
   end
 
   def restore_backup(service_id, backup_id, node_id, ori_service_id, opts)
@@ -528,7 +532,7 @@ module VCAP::Services::Base::ProvisionerV3
     job = get_job(job_id)
     @logger.info("RestoreBackupJob created: #{job.inspect}")
     job.nil? ? false : true
-  rescue
+  rescue => e
     @logger.error("RestoreBackupJob failed: #{e}")
     false
   end
@@ -543,9 +547,13 @@ module VCAP::Services::Base::ProvisionerV3
     job = get_job(job_id)
     @logger.info("DeleteBackupJob created: #{job.inspect}")
     blk.call(success(job))
-  rescue
+  rescue => e
     @logger.error("DeleteBackupJob failed: #{e}")
-    blk.call(failure(e))
+    if e.instance_of? ServiceError
+      blk.call(failure(e))
+    else
+      blk.call(internal_fail)
+    end
   end
 
   def user_triggered_options(params)
@@ -576,6 +584,6 @@ module VCAP::Services::Base::ProvisionerV3
     end
   end
 
-  before [:create_backup], :before_backup_apis
+  before [:create_backup, :restore_backup, :delete_backup], :before_backup_apis
 end
 

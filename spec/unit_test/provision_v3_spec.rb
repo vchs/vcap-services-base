@@ -31,6 +31,23 @@ describe ProvisionerTests do
         EM.next_tick {EM.stop}
       end
     end
+
+    it "should be able to handle error in create_backup and delete_backup" do
+      mock_nats = double("test_mock_nats")
+      EM.run do
+        provisioner = ProvisionerTests.create_provisioner(options)
+        provisioner.nats = mock_nats
+        provisioner.should_receive(:before_backup_apis).twice.and_return(true)
+
+        [:create_backup, :delete_backup].each do |method|
+          provisioner.should_receive(:"#{method}_job").and_raise("error")
+          error = nil
+          provisioner.send(method, "service_id", "backup_id", {}) { |e| error = e }
+          error['response']['status'].should eq ServiceError::HTTP_INTERNAL
+        end
+        EM.next_tick {EM.stop}
+      end
+    end
   end
 
   describe "Provisioner" do
