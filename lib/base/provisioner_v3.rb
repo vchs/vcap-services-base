@@ -316,7 +316,12 @@ module VCAP::Services::Base::ProvisionerV3
             update_status_blk = Proc.new do |res|
               status = res["success"] ? VCAP::Services::Internal::ServiceInstanceStatus::READY :
                       VCAP::Services::Internal::ServiceInstanceStatus::FAILURE
-              update_instance_status(update_url, status)
+              @logger.info("Provisioner: Changing instance status to '#{status}' -'#{update_url}'")
+
+              f = Fiber.new do
+                update_instance_status(update_url, status)
+              end
+              f.resume
             end
             provision_on_node(svc, plan, version, update_status_blk)
             @node_nats.unsubscribe(subscription) if subscription
@@ -469,60 +474,55 @@ module VCAP::Services::Base::ProvisionerV3
   end
 
   def update_instance_status(url, status)
-    @logger.info("Provisioner: Changing instance status to '#{status}' -'#{url}'")
+    succeed = false
+    3.times do
+      need_retry = false
+      instance_info = nil
+      etag = nil
+      begin
+        @cc_http_handler.cc_http_request({ uri: url,
+                                           method: "get"}) do |http|
+          if !http.error
+            if (200..299) === http.response_header.status
+              etag = http.response_header.etag
+              @logger.info("Provisioner: Successfully retrieved old instance info.")
+              instance_info = JSON.parse(http.response)['resources'][0]['entity'].select { |k, v| !v.nil? } rescue nil
+            else
+              @logger.error("Provisioner:: Failed to retrieve old instance info - status=#{http.response_header.status}")
+            end
+          else
+            @logger.error("Provisioner:: Failed to retrieve old instance info: #{http.error}")
+          end
 
-    f = Fiber.new do
-      succeed = false
-      3.times do
-        need_retry = false
-        instance_info = nil
-        etag = nil
-        begin
-          @cc_http_handler.cc_http_request({ uri: url,
-                                             method: "get"}) do |http|
+        end
+        if instance_info
+          body = Yajl::Encoder.encode(instance_info.merge!(status: status))
+
+          @cc_http_handler.cc_http_request(uri: url,
+                                           method: "put",
+                                           :head => {"If-Match" => etag.tr('"', '') },
+                                           body: body) do |http|
             if !http.error
               if (200..299) === http.response_header.status
-                etag = http.response_header.etag
-                @logger.info("Provisioner: Successfully retrieved old instance info.")
-                instance_info = JSON.parse(http.response)['resources'][0]['entity'].select { |k, v| !v.nil? } rescue nil
+                @logger.info("Provisioner: Successfully updated instance info.")
+                succeed = true
               else
-                @logger.error("Provisioner:: Failed to retrieve old instance info - status=#{http.response_header.status}")
+                status = http.response_header.status
+                @logger.error("Provisioner:: Failed to update instance info - status=#{http.response_header.status}")
+                need_retry = true if status.to_i == HTTPHandler::HTTP_IF_MATCH_FAIL
               end
             else
-              @logger.error("Provisioner:: Failed to retrieve old instance info: #{http.error}")
-            end
-
-          end
-          if instance_info
-            body = Yajl::Encoder.encode(instance_info.merge!(status: status))
-
-            @cc_http_handler.cc_http_request(uri: url,
-                                             method: "put",
-                                             :head => {"If-Match" => etag.tr('"', '') },
-                                             body: body) do |http|
-              if !http.error
-                if (200..299) === http.response_header.status
-                  @logger.info("Provisioner: Successfully updated instance info.")
-                  succeed = true
-                else
-                  status = http.response_header.status
-                  @logger.error("Provisioner:: Failed to update instance info - status=#{http.response_header.status}")
-                  need_retry = true if status.to_i == HTTPHandler::HTTP_IF_MATCH_FAIL
-                end
-              else
-                @logger.error("Provisioner:: Failed to update instance info: #{http.error}")
-              end
+              @logger.error("Provisioner:: Failed to update instance info: #{http.error}")
             end
           end
-        rescue => e
-          @logger.error("Error to update instance status")
-          @logger.error(e)
         end
-        break unless need_retry
+      rescue => e
+        @logger.error("Error to update instance status")
+        @logger.error(e)
       end
-      yield succeed if block_given?
+      break unless need_retry
     end
-    f.resume
+    succeed
   end
 
   def before_backup_apis(service_id, *args, &blk)
