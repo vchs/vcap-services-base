@@ -71,10 +71,10 @@ class HTTPHandler
     http = EM::HttpRequest.new(args[:uri]).send(args[:method], req)
     if http.error && http.error != ""
       unless args[:need_raise]
-        @logger.error("Catalog Manager (HTTPHandler): Failed to connect to CC, the error is #{http.error}")
+        @logger.error("HTTPHandler: Failed to send request '#{args[:uri]}', the error is #{http.error}")
         return
       else
-        raise("Catalog Manager (HTTPHandler): Failed to connect to CC, the error is #{http.error}")
+        raise("HTTPHandler: Failed to send request '#{args[:uri]}', the error is #{http.error}")
       end
     end
     http.callback { f.resume(http, nil) }
