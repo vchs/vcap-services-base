@@ -387,6 +387,85 @@ describe ProvisionerTests do
       end
     end
 
+    context "update instance status" do
+
+      let(:get_success_response) { double('get_response', error: nil, response_header: double('header', status: 200, etag: 'head'),
+                                  response: {
+                                      'resources' => [ {
+                                                           'entity' => { id: 'abc'}
+                                                       }]
+                                  }.to_json) }
+
+      let(:put_success_response) { double('put_response', error: nil, response_header: double('header', status: 200),
+                                  response: 'ok') }
+
+
+      let(:put_fail_response) { double('put_response', error: nil, response_header: double('header', status: 412),
+                                          response: 'ok') }
+
+
+      it "should get status first before updating" do
+
+        update_called = false
+        HTTPHandler.any_instance.should_receive(:cc_http_request).twice.with(any_args()).\
+        and_return { |args, &cb|
+          if args[:method] == 'get'
+            cb.call(get_success_response)
+          elsif args[:method] == 'put'
+            update_called = true
+            cb.call(put_success_response)
+          end
+        }
+
+        EM.run do
+          succeed = false
+
+          provisioner = ProvisionerTests.create_provisioner(options)
+          provisioner.update_instance_status('http://ip/instance/1', 'READY') do |result|
+            succeed = result
+          end
+          update_called.should be_true
+          succeed.should be_true
+          EM.stop
+        end
+
+      end
+
+      it "should retry in case of IF-Match-Fail(412) error" do
+
+        update_called = false
+        first_time_put = true
+        HTTPHandler.any_instance.should_receive(:cc_http_request).at_least(4).with(any_args()).\
+        and_return { |args, &cb|
+          if args[:method] == 'get'
+            cb.call(get_success_response)
+          elsif args[:method] == 'put'
+            update_called = true
+            if (first_time_put)
+              first_time_put = false
+              cb.call(put_fail_response)
+            else
+              cb.call(put_success_response)
+            end
+          end
+        }
+
+        EM.run do
+          succeed = false
+
+          provisioner = ProvisionerTests.create_provisioner(options)
+          provisioner.update_instance_status('http://ip/instance/1', 'READY') do |result|
+            succeed = result
+          end
+          update_called.should be_true
+          succeed.should be_true
+          EM.stop
+        end
+
+      end
+
+    end
+
     context "support provision with restored data" do
 
       let(:mock_nats) { double("test_mock_nats") }
