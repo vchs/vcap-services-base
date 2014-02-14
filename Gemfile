@@ -10,6 +10,7 @@ group :test do
   gem 'vcap_common', :require => ['vcap/common', 'vcap/component'], :git => 'https://github.com/cloudfoundry/vcap-common.git', :ref => '658be8a8f6'
   gem 'vcap_logging', :require => ['vcap/logging'], :git => 'https://github.com/cloudfoundry/common.git', :ref => 'b96ec1192d'
   gem 'vcap_services_messages', :git => 'https://github.com/vchs/vcap-services-messages.git', :ref => '470cd3f0f0bd8'
+  gem 'vcap_injection', :git => 'https://github.com/vchs/vcap-injection.git'
   gem 'warden-client', :require => ['warden/client'], :git => 'https://github.com/cloudfoundry/warden.git', :ref => 'fe6cb51'
   gem 'warden-protocol', :require => ['warden/protocol'], :git => 'https://github.com/cloudfoundry/warden.git', :ref => 'fe6cb51'
   gem 'simplecov'

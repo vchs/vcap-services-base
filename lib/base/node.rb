@@ -4,6 +4,7 @@ require 'vcap/component'
 require 'fileutils'
 require 'socket'
 
+
 $:.unshift(File.dirname(__FILE__))
 require 'base'
 require 'vcap_services_messages/service_message'
@@ -11,6 +12,7 @@ require 'datamapper_l'
 
 class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   include VCAP::Services::Internal
+
 
   DEFAULT_HEARTBEAT_INTERVAL = 10 # In secs
 
@@ -41,16 +43,23 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     EM.add_timer(5) do
       EM.defer { update_varz }
     end if @node_nats
+
+
   end
 
   def flavor
     return "Node"
   end
 
+  def config_update_event
+    "#{service_name}.config_update.#{@node_id}"
+  end
+
+
   def on_connect_node
     @logger.debug("#{service_description}: Connected to node mbus")
 
-    %w[provision unprovision update_credentials bind unbind purge_orphan  config_update
+    %w[provision unprovision update_credentials bind unbind purge_orphan
     ].each do |op|
       eval %[@node_nats.subscribe("#{service_name}.#{op}.#{@node_id}") { |msg, reply| EM.defer{ on_#{op}(msg, reply) } }]
     end
@@ -121,6 +130,7 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
   end
 
   def on_provision(msg, reply)
+
     @logger.debug("#{service_description}: Provision request: #{msg} from #{reply}")
     response = ProvisionResponse.new
     rollback = lambda do |res|
@@ -183,22 +193,6 @@ class VCAP::Services::Base::Node < VCAP::Services::Base::Base
     @logger.warn("Exception at on_update_credentials #{e}")
   end
 
-  def on_config_update(msg, reply)
-    @logger.debug("#{service_description}: Config update request: #{msg}.")
-    response = SimpleResponse.new
-    config_update_req = ConfigUpdate.decode(msg)
-    config_update = config_update_req.new_configs
-    config_update.each do |k,v|
-      eval  "@#{k} = #{v}"
-    end
-
-    publish(reply, encode_success(response))
-
-  rescue => e
-    @logger.warn("Exception at config update #{e}")
-
-    publish(reply, encode_failure(response, e))
-  end
 
   def on_bind(msg, reply)
     @logger.debug("#{service_description}: Bind request: #{msg} from #{reply}")

@@ -26,6 +26,7 @@ Gem::Specification.new do |s|
   s.add_dependency "vcap_common", ">= 2.2.1"
   s.add_dependency "vcap_logging", ">= 1.0.2"
   s.add_dependency "vcap_services_messages"
+  s.add_dependency "vcap_injection"
   s.add_dependency "resque", "~> 1.20"
   s.add_dependency "resque-status", "~> 0.4.1"
   s.add_dependency "curb", "~> 0.7.16"

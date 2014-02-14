@@ -3,6 +3,7 @@ require 'eventmachine'
 require 'vcap/common'
 require 'vcap/component'
 require 'nats/client'
+require 'vcap/injection'
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'abstract'
@@ -26,6 +27,7 @@ end
 class VCAP::Services::Base::Base
 
   include VCAP::Services::Base::Error
+  include VCAP::Injection::API
 
   attr_reader :closing
 
@@ -66,6 +68,7 @@ class VCAP::Services::Base::Base
           :password => status_password
         )
         on_connect_node
+        enable_injection(@node_nats, config_update_event)
       end
     else
       @logger.info("NATS is disabled")
@@ -76,6 +79,10 @@ class VCAP::Services::Base::Base
 
   def service_description()
     return "#{service_name}-#{flavor}"
+  end
+
+  def config_update_event
+    "#{service_name}.config_update"
   end
 
   def publish(reply, msg)

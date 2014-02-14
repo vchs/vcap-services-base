@@ -200,6 +200,10 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
     Fiber.yield
   end
 
+  def config_update_event
+    "#{service_name}.config_update.provisioner"
+  end
+
   def on_connect_node
     @logger.debug("[#{service_description}] Connected to node mbus..")
     %w[announce node_handles update_service_handle instances_info].each do |op|
@@ -322,6 +326,7 @@ class VCAP::Services::Base::Provisioner < VCAP::Services::Base::Base
   end
 
   def unprovision_service(instance_id, &blk)
+
     @logger.debug("[#{service_description}] Unprovision service #{instance_id}")
     begin
       svc = get_instance_handle(instance_id)
